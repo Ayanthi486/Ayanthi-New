@@ -1,0 +1,706 @@
+// Hub Lanka Pvt Limited — Prisma schema
+//
+// Phase 1 scope: identity, RBAC and audit foundation (user, role,
+// permission, user_role, role_permission, refresh_token, audit_log).
+// Phase 2 scope: shipment core (shipment, shipment_cancellation_request).
+// Phase 3 scope: master data (shipper, consignee, airline, commodity,
+// airport), the Rate Table, and shipment's normalized FK references +
+// applied buying rate. Phase 4 scope: cost_sheet, cost_sheet_line.
+// Phase 5 scope: invoice, invoice_line. Phase 6 scope: payment. Phase 7
+// scope: shipment_document. Phase 8 scope: cutoff_alert,
+// shipment.actualDepartureAt. Further phases arrive per
+// DEVELOPMENT_PLAN.md. Do not add them here without an approved phase.
+
+// Output lives under src/ (not apps/api/generated/) so TypeScript's inferred
+// rootDir stays "src" and the compiled entry point lands at dist/main.js.
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// --- Identity & RBAC ---------------------------------------------------
+// ARCHITECTURE §9: user ─< user_role >─ role ─< role_permission >─ permission,
+// all rows in the database so remapping is configuration, not a sprint.
+
+model User {
+  id               String    @id @default(uuid())
+  email            String    @unique
+  passwordHash     String
+  fullName         String
+  isActive         Boolean   @default(true)
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+  // Randomised storage key for the user's own uploaded profile photo (never
+  // the original filename, ARCHITECTURE §12) — null when none is set.
+  avatarStorageKey String?
+  // Bumped on password change / role reassignment / deactivation so a
+  // still-valid access token issued before that moment stops working
+  // immediately (ARCHITECTURE §8: "sessions invalidated on role change,
+  // password change or deactivation") without a separate token blocklist.
+  sessionValidFrom DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  userRoles                UserRole[]                    @relation("UserRoles")
+  assignedUserRoles        UserRole[]                    @relation("AssignedByUser")
+  refreshTokens            RefreshToken[]
+  auditLogEntries          AuditLog[]
+  createdShipments         Shipment[]                    @relation("ShipmentCreatedBy")
+  requestedCancellations   ShipmentCancellationRequest[] @relation("CancellationRequestedBy")
+  reviewedCancellations    ShipmentCancellationRequest[] @relation("CancellationReviewedBy")
+  createdCommodities       Commodity[]                   @relation("CommodityCreatedBy")
+  createdRateTableEntries  RateTable[]                   @relation("RateTableCreatedBy")
+  createdCostSheets        CostSheet[]                   @relation("CostSheetCreatedBy")
+  releasedCostSheets       CostSheet[]                   @relation("CostSheetReleasedBy")
+  approvedCostSheets       CostSheet[]                   @relation("CostSheetApprovedBy")
+  createdInvoices          Invoice[]                     @relation("InvoiceCreatedBy")
+  issuedInvoices           Invoice[]                     @relation("InvoiceIssuedBy")
+  recordedPayments         Payment[]                     @relation("PaymentRecordedBy")
+  createdDocuments         ShipmentDocument[]            @relation("DocumentCreatedBy")
+  issuedDocuments          ShipmentDocument[]            @relation("DocumentIssuedBy")
+  acknowledgedCutoffAlerts CutoffAlert[]                 @relation("CutoffAcknowledgedBy")
+
+  @@map("user")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  @@map("role")
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[]
+
+  @@map("permission")
+}
+
+model UserRole {
+  userId           String
+  roleId           String
+  assignedAt       DateTime @default(now())
+  assignedByUserId String?
+
+  user           User  @relation("UserRoles", fields: [userId], references: [id], onDelete: Cascade)
+  role           Role  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  assignedByUser User? @relation("AssignedByUser", fields: [assignedByUserId], references: [id], onDelete: SetNull)
+
+  @@id([userId, roleId])
+  @@map("user_role")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  grantedAt    DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permission")
+}
+
+// Opaque, rotating, hashed-at-rest (ARCHITECTURE §8). familyId links every
+// token descended from one login so a replayed/revoked token can be
+// detected and the whole family revoked as a compromise signal.
+model RefreshToken {
+  id                String    @id @default(uuid())
+  userId            String
+  tokenHash         String    @unique
+  familyId          String
+  issuedAt          DateTime  @default(now())
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  replacedByTokenId String?   @unique
+  createdByIp       String?
+  userAgent         String?
+
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedByToken RefreshToken? @relation("TokenChain", fields: [replacedByTokenId], references: [id], onDelete: SetNull)
+  replacesToken   RefreshToken? @relation("TokenChain")
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_token")
+}
+
+// --- Audit ---------------------------------------------------------------
+// Append-only. Grants restricting UPDATE/DELETE for the application's
+// runtime database role are enforced by a hand-written migration, not by
+// this schema — see the migration following table creation (PRD §11,
+// ARCHITECTURE §10: "enforced at the database grant level").
+model AuditLog {
+  id          BigInt   @id @default(autoincrement())
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String?
+  before      Json?
+  after       Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  actorUser User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorUserId])
+  @@index([createdAt])
+  @@map("audit_log")
+}
+
+// --- Shipment core (Phase 2, normalized in Phase 3) ------------------------
+// PRD §5.1/§5.2, ARCHITECTURE §5. Shipper/consignee/commodity/airline/
+// destination are FK references to master data (below) as of Phase 3 — see
+// the Phase 3 report for the backfill migration that replaced the Phase 2
+// plain-text columns.
+
+enum ShipmentStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+
+  @@map("shipment_status")
+}
+
+enum CancellationRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+
+  @@map("cancellation_request_status")
+}
+
+model Shipment {
+  id                   String         @id @default(uuid())
+  // Generated in the database from a true Postgres sequence
+  // (shipment_no_seq, created by hand in this model's migration —
+  // ARCHITECTURE §5: "never generated in application code, never
+  // client-side, never from a row count"). Guarantees AC-01 for free.
+  shipmentNo           String         @unique @default(dbgenerated("('HUB '::text || lpad((nextval('shipment_no_seq'::regclass))::text, 6, '0'::text))"))
+  // BR-03: manually entered, deliberately NOT unique — one MAWB may cover
+  // several shipments (consolidation). Never add a unique constraint here.
+  mawbNo               String?
+  houseAwbNo           String?
+  // BR-58: airline is a stored, explicit reference — never derived from the
+  // MAWB prefix. PRD §7: must reference an active master record.
+  airlineId            String
+  flightNo             String?
+  // Airport master data — nullable, matching Phase 2's optional destination.
+  destinationAirportId String?
+  shipperId            String
+  consigneeId          String
+  commodityId          String
+  // BR-13: Flight Date and Handling Date are separate and must not merge.
+  flightDate           DateTime       @db.Date
+  handlingDate         DateTime?      @db.Date
+  // BR-16: 24-hour picker, stored as a time-of-day value (no date component).
+  depTime              DateTime       @db.Time
+  // Hidden from the schedule grid (BR-19); populates documents later.
+  cusdecNo             String?
+  // BR-05/BR-06: nullable until cargo handling; set exclusively through the
+  // cargo module (`cargo.boxweight.enter`), never the general shipment
+  // update path — see CargoService.
+  boxCount             Int?
+  weightKg             Decimal?       @db.Decimal(10, 3)
+  // BR-43/AC-14: the applied buying-rate VALUE, snapshotted by
+  // ShipmentService#setBuyingRate at capture time — never a live reference,
+  // so a later Rate Table change cannot rewrite this shipment's history.
+  // appliedBuyingRateId is informational only (traces which period
+  // resolved it), never authoritative for computation.
+  appliedBuyingRate    Decimal?       @db.Decimal(12, 4)
+  appliedBuyingRateId  String?
+  // BR-50/OQ-11: the one confirmed candidate location for "actual flight
+  // departure," per explicit user decision (Phase 8 report) — CONTEXT.md §18
+  // warned this was not a settled default. Set once via
+  // ShipmentService#recordActualDeparture; immutable after set (LockedError
+  // on a second attempt), and resolves any open CutoffAlert to PASSED in the
+  // same transaction.
+  actualDepartureAt    DateTime?
+  status               ShipmentStatus @default(PENDING)
+  // Optimistic concurrency (ARCHITECTURE §20): UPDATE ... WHERE id = ? AND version = ?.
+  version              Int            @default(0)
+  createdByUserId      String
+  // OQ-9 is open — soft delete with a full audit entry until answered
+  // (ARCHITECTURE §14's delete-tension resolution). Never hard-deleted.
+  isDeleted            Boolean        @default(false)
+  deletedAt            DateTime?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  createdByUser          User                          @relation("ShipmentCreatedBy", fields: [createdByUserId], references: [id])
+  cancellationRequests   ShipmentCancellationRequest[]
+  airline                Airline                       @relation(fields: [airlineId], references: [id])
+  destinationAirport     Airport?                      @relation(fields: [destinationAirportId], references: [id])
+  shipper                Shipper                       @relation(fields: [shipperId], references: [id])
+  consignee              Consignee                     @relation(fields: [consigneeId], references: [id])
+  commodity              Commodity                     @relation(fields: [commodityId], references: [id])
+  appliedBuyingRateEntry RateTable?                    @relation(fields: [appliedBuyingRateId], references: [id])
+  costSheet              CostSheet?
+  invoice                Invoice?
+  documents              ShipmentDocument[]
+  cutoffAlert            CutoffAlert?
+
+  // BR-15: the default schedule view's access pattern.
+  @@index([flightDate, depTime])
+  @@index([mawbNo])
+  @@index([status])
+  @@index([airlineId])
+  @@map("shipment")
+}
+
+model ShipmentCancellationRequest {
+  id                String                    @id @default(uuid())
+  shipmentId        String
+  // BR-11: mandatory.
+  reason            String
+  status            CancellationRequestStatus @default(PENDING)
+  requestedByUserId String
+  requestedAt       DateTime                  @default(now())
+  reviewedByUserId  String?
+  reviewedAt        DateTime?
+  reviewNote        String?
+
+  shipment        Shipment @relation(fields: [shipmentId], references: [id])
+  requestedByUser User     @relation("CancellationRequestedBy", fields: [requestedByUserId], references: [id])
+  reviewedByUser  User?    @relation("CancellationReviewedBy", fields: [reviewedByUserId], references: [id])
+
+  @@index([shipmentId])
+  @@index([status])
+  @@map("shipment_cancellation_request")
+}
+
+// --- Master data (Phase 3) -------------------------------------------------
+// PRD §7: shipment's shipper/consignee/commodity/airline/destination must
+// each reference an active master record. Soft-deleted via `isActive`
+// (ARCHITECTURE §5) — never hard-deleted, since shipment history
+// references these rows by id.
+
+model Shipper {
+  id        String   @id @default(uuid())
+  name      String
+  // DEVELOPMENT_PLAN.md Phase 3: "with full addresses — the CDN needs them".
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shipments Shipment[]
+
+  @@map("shipper")
+}
+
+model Consignee {
+  id        String   @id @default(uuid())
+  name      String
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shipments Shipment[]
+
+  @@map("consignee")
+}
+
+model Airline {
+  id        String   @id @default(uuid())
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shipments  Shipment[]
+  rateTables RateTable[]
+
+  @@map("airline")
+}
+
+// BR-17: Executive and Manager may both add commodities
+// (masterdata.commodity.create) — createdByUserId records who, since that
+// permission is broader than masterdata.manage.
+model Commodity {
+  id              String   @id @default(uuid())
+  name            String
+  isActive        Boolean  @default(true)
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  createdByUser User       @relation("CommodityCreatedBy", fields: [createdByUserId], references: [id])
+  shipments     Shipment[]
+
+  @@map("commodity")
+}
+
+model Airport {
+  id        String   @id @default(uuid())
+  code      String
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shipments Shipment[]
+
+  @@map("airport")
+}
+
+// --- Rate Table (Phase 3) ---------------------------------------------------
+// PRD §8/§11, CONTEXT.md §11, BR-39/42/43/44/45. Confirmed dimensions only
+// (OQ-1: airline + effective period) — destination/weight-break are
+// explicitly unconfirmed and deliberately not modelled; extend additively
+// if/when confirmed.
+//
+// There is no "update rate value" mutation anywhere in this schema or the
+// service above it: BR-43 requires history to be preserved, so every rate
+// change is a NEW row, and creating one auto-closes the airline's
+// currently open period (RatesService#create). This makes "can a rate row
+// be edited after the fact" structurally impossible rather than a rule to
+// remember.
+model RateTable {
+  id              String    @id @default(uuid())
+  airlineId       String
+  // BR-42: USD. Precision exceeds displayed precision (ARCHITECTURE §5),
+  // one digit more than weight's Decimal(10,3) since this is a money-adjacent
+  // rate, not a physical measurement.
+  rateUsdPerKg    Decimal   @db.Decimal(12, 4)
+  effectiveFrom   DateTime  @db.Date
+  // null = still open/current.
+  effectiveTo     DateTime? @db.Date
+  createdByUserId String
+  createdAt       DateTime  @default(now())
+
+  airline          Airline    @relation(fields: [airlineId], references: [id])
+  createdByUser    User       @relation("RateTableCreatedBy", fields: [createdByUserId], references: [id])
+  appliedShipments Shipment[]
+
+  @@index([airlineId, effectiveFrom])
+  @@map("rate_table")
+}
+
+// --- Cost Sheet (Phase 4) ---------------------------------------------------
+// PRD §5.3, CONTEXT.md §12, BR-32/14/51/59/60/61. Hub Lanka's internal
+// operational expenses, LKR, release -> review -> approve.
+
+enum CostSheetStatus {
+  DRAFT
+  RELEASED
+  APPROVED
+
+  @@map("cost_sheet_status")
+}
+
+// The 11 fixed line types (CONTEXT.md §12) — exhaustive, not user-extensible.
+enum CostSheetLineType {
+  SL_CUSTOMS_RECEIPTS
+  SRILANKAN_SECURITY_CHARGES_RECEIPTS
+  ANIMAL_QUARANTINE
+  PLANT_QUARANTINE
+  TRANSPORT
+  AASL_VEHICLE_PASS
+  LABOUR
+  SRILANKAN_SECURITY_OFFICER_EXPENSES
+  INSPECTION
+  OPERATIONAL
+  OTHER
+
+  @@map("cost_sheet_line_type")
+}
+
+model CostSheet {
+  id                   String          @id @default(uuid())
+  shipmentId           String          @unique
+  // BR-51: Shipment ID and Cost Sheet S/N No coexist as separate identifiers.
+  snNo                 String?
+  status               CostSheetStatus @default(DRAFT)
+  remarks              String?
+  // The physical form's Shift Leader signature — free text (Shift Leader is
+  // an Executive responsibility, not a system role/account, BR-20), unlike
+  // Approved-by below which is a real actor reference.
+  shiftLeaderSignature String?
+  // Optimistic concurrency (ARCHITECTURE §20) — same discipline as
+  // shipment/cargo, since this feeds financial calculations.
+  version              Int             @default(0)
+
+  createdByUserId  String
+  releasedByUserId String?
+  releasedAt       DateTime?
+  // BR-61: approval is a workflow state with a recorded signature, not a
+  // display-only field — approvedByUserId/approvedAt IS that signature.
+  approvedByUserId String?
+  approvedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shipment       Shipment        @relation(fields: [shipmentId], references: [id])
+  createdByUser  User            @relation("CostSheetCreatedBy", fields: [createdByUserId], references: [id])
+  releasedByUser User?           @relation("CostSheetReleasedBy", fields: [releasedByUserId], references: [id])
+  approvedByUser User?           @relation("CostSheetApprovedBy", fields: [approvedByUserId], references: [id])
+  lines          CostSheetLine[]
+
+  @@map("cost_sheet")
+}
+
+model CostSheetLine {
+  id          String            @id @default(uuid())
+  costSheetId String
+  lineType    CostSheetLineType
+  // LKR, optional per line (CONTEXT.md §12). Total is computed from these,
+  // never stored (DEVELOPMENT_RULES §5).
+  amount      Decimal?          @db.Decimal(12, 2)
+
+  costSheet CostSheet @relation(fields: [costSheetId], references: [id])
+
+  @@unique([costSheetId, lineType])
+  @@map("cost_sheet_line")
+}
+
+// --- Invoice (Phase 5) ------------------------------------------------------
+// PRD §5.4, §6, §8, §9, CONTEXT.md §13; BR-27/30/40/41/42/52/53/66. Manager-owned,
+// dual currency LKR/USD, create -> edit -> issue (immutable after issue).
+//
+// Header display fields (AWB No, Flights, Dest, Commodity, Shipper/address,
+// Consignee, No. of Pkgs, ETD Colombo, Gross Wt) are NOT duplicated here —
+// BR-35 single source of truth — they're read live from the Shipment/
+// Shipper/Consignee/Commodity/Airport relations already in the schema.
+// Chargeable Weight is new to Invoice (CONTEXT §11: "the cost is computed
+// later, once Chargeable Weight exists on the Invoice" — resolves OQ-12).
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+
+  @@map("invoice_status")
+}
+
+// BR-30/BR-40: charge lines are manually entered per shipment, not a fixed
+// set — unlike CostSheetLineType, this is not exhaustive. weightBasis
+// records which of the shipment's weights (if any) the line's rate applies
+// to (PRD §8: "Freight on chargeable, Screening on gross, others flat").
+enum InvoiceLineWeightBasis {
+  CHARGEABLE
+  GROSS
+  FLAT
+
+  @@map("invoice_line_weight_basis")
+}
+
+model Invoice {
+  id                  String        @id @default(uuid())
+  shipmentId          String        @unique
+  // BR-52: manually entered, no auto-generation. No uniqueness constraint —
+  // PRD does not state one, same precedent as BR-03's MAWB (see Phase 5 report).
+  invoiceNo           String?
+  invoiceDate         DateTime?     @db.Date
+  // BR-53: Manager-set. Same precision convention as RateTable.rateUsdPerKg.
+  exchangeRate        Decimal?      @db.Decimal(12, 4)
+  // Credit term in days (e.g. "05 DAY'S CREDIT" on the real invoice). Due
+  // date is computed (invoiceDate + termDays), never stored — DEVELOPMENT_RULES §5.
+  termDays            Int?
+  // BR-41/OQ-12: lives here, not on Shipment — see the file-level note above.
+  chargeableWeightKg  Decimal?      @db.Decimal(10, 3)
+  status              InvoiceStatus @default(DRAFT)
+  // Optimistic concurrency (ARCHITECTURE §20), same discipline as shipment/cost sheet.
+  version             Int           @default(0)
+  // Idempotency-Key on issue (ARCHITECTURE §7) — a replay of this exact key
+  // against an already-ISSUED invoice returns the existing result instead
+  // of erroring; the `version`-guarded update closes the double-click race itself.
+  issueIdempotencyKey String?       @unique
+
+  createdByUserId String
+  issuedByUserId  String?
+  issuedAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shipment      Shipment      @relation(fields: [shipmentId], references: [id])
+  createdByUser User          @relation("InvoiceCreatedBy", fields: [createdByUserId], references: [id])
+  issuedByUser  User?         @relation("InvoiceIssuedBy", fields: [issuedByUserId], references: [id])
+  lines         InvoiceLine[]
+  payments      Payment[]
+
+  @@map("invoice")
+}
+
+model InvoiceLine {
+  id          String                 @id @default(uuid())
+  invoiceId   String
+  // Preserves entry order (the real invoice's Freight/MAWB Fee/Screening/
+  // Handling/Security order is entry order, not alphabetical or fixed).
+  sortOrder   Int
+  description String
+  weightBasis InvoiceLineWeightBasis
+  // True precision, e.g. Screening's real 0.021 though it prints as 0.02
+  // (PRD §8's precision warning).
+  rateUsd     Decimal                @db.Decimal(12, 4)
+  // Deliberate snapshot (CONTEXT §23: "Invoice line values at issue") —
+  // recomputed on every edit while DRAFT, frozen in practice once the
+  // parent is ISSUED since all further edits are blocked (LockedError).
+  amountUsd   Decimal                @db.Decimal(12, 2)
+  amountLkr   Decimal                @db.Decimal(12, 2)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([invoiceId])
+  @@map("invoice_line")
+}
+
+// --- Payment (Phase 6) ------------------------------------------------------
+// PRD §5.4, §6, CONTEXT.md §14; BR-28/54/55/56/57. Manager records against an
+// Issued invoice; Director views. A payment is never edited or deleted once
+// recorded (DEVELOPMENT_RULES §5 — never rewrite a historical financial
+// value). Remaining balance and "fully paid" are computed, never stored —
+// see payment.util.ts.
+
+enum PaymentCurrency {
+  USD
+  LKR
+
+  @@map("payment_currency")
+}
+
+model Payment {
+  id                      String          @id @default(uuid())
+  invoiceId               String
+  // The user's chosen currency for this payment — the real invoice supports
+  // both a USD wire transfer and a local LKR cheque (Payment Term A). The
+  // USD-equivalent for balance/fully-paid purposes is computed from this
+  // plus `invoice.exchangeRate`, never stored (payment.util.ts).
+  amount                  Decimal         @db.Decimal(12, 2)
+  currency                PaymentCurrency
+  paymentDate             DateTime        @db.Date
+  method                  String?
+  reference               String?
+  // Randomised storage key (never the original filename, ARCHITECTURE §12) —
+  // null when no receipt was attached.
+  receiptStorageKey       String?
+  receiptOriginalFilename String?
+  receiptContentType      String?
+  // Idempotency-Key on payment recording (ARCHITECTURE §7) — a create, not a
+  // state transition like Invoice#issue, so this is checked before insert
+  // rather than guarded by `version`.
+  idempotencyKey          String?         @unique
+  recordedByUserId        String
+
+  createdAt DateTime @default(now())
+
+  invoice        Invoice @relation(fields: [invoiceId], references: [id])
+  recordedByUser User    @relation("PaymentRecordedBy", fields: [recordedByUserId], references: [id])
+
+  @@index([invoiceId])
+  @@map("payment")
+}
+
+// --- Documents (Phase 7) ----------------------------------------------------
+// PRD §9, CONTEXT.md §15/§16; BR-07/25/26/33/34/35/36/62/63/64/65. One
+// generic table for all five document types (DEVELOPMENT_PLAN.md's own DB
+// design) — each type's confirmed manual fields (PRD §9's table) are
+// validated by that type's own Zod schema in packages/shared before ever
+// reaching `fieldData`, not five bespoke column sets.
+//
+// ADF never transitions to ISSUED (decision #3 — BR-63, no print path).
+// AWB Sticker's ISSUED freezes fieldData/snapshot but produces no stored
+// file (Print only, no Download per PRD §9). Security Clearance/AWB/CDN's
+// ISSUED additionally renders a PDF via the worker and stores it
+// (`storageKey`, StorageService, Phase 6). `snapshot` is the full resolved
+// view model at the moment of issue (CONTEXT §23 deliberate snapshot) —
+// never populated while DRAFT, which always renders live from the Shipment.
+
+enum DocumentType {
+  SECURITY_CLEARANCE
+  AWB_STICKER
+  ADF
+  AWB
+  CDN
+
+  @@map("document_type")
+}
+
+enum DocumentStatus {
+  DRAFT
+  ISSUED
+
+  @@map("document_status")
+}
+
+model ShipmentDocument {
+  id         String         @id @default(uuid())
+  shipmentId String
+  type       DocumentType
+  // Decision #6: a shipment edit after ISSUE opens a new DRAFT version — the
+  // issued row is never altered. @@unique below enforces one row per version.
+  version    Int
+  status     DocumentStatus @default(DRAFT)
+  // Per-type manual fields only (PRD §9's "Manual fields" column) — never
+  // shipment-sourced data (BR-35, single source of truth).
+  fieldData  Json
+  // Null while DRAFT; the full resolved view model, written once at issue.
+  snapshot   Json?
+  // Set only for the three PDF-producing types (Security Clearance/AWB/CDN).
+  storageKey String?
+
+  createdByUserId String
+  issuedByUserId  String?
+  issuedAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shipment      Shipment @relation(fields: [shipmentId], references: [id])
+  createdByUser User     @relation("DocumentCreatedBy", fields: [createdByUserId], references: [id])
+  issuedByUser  User?    @relation("DocumentIssuedBy", fields: [issuedByUserId], references: [id])
+
+  @@unique([shipmentId, type, version])
+  @@index([shipmentId, type])
+  @@map("shipment_document")
+}
+
+// --- Cut-off (Phase 8) -------------------------------------------------
+// PRD §5.5, CONTEXT.md §18; BR-21/BR-50. One evolving row per shipment,
+// created lazily the first time a shipment leaves Normal (absence of a row
+// means Normal — decision #1, Phase 8 report). No NORMAL value in the enum
+// for the same reason. `state`/`acknowledgedAt`/`acknowledgedByUserId`
+// update in place as the cron evaluator escalates the alert; escalating to
+// a MORE severe state clears any existing acknowledgement (decision #2).
+
+enum CutoffState {
+  APPROACHING
+  URGENT
+  PASSED
+
+  @@map("cutoff_state")
+}
+
+model CutoffAlert {
+  id                   String      @id @default(uuid())
+  shipmentId           String      @unique
+  state                CutoffState
+  raisedAt             DateTime    @default(now())
+  acknowledgedAt       DateTime?
+  acknowledgedByUserId String?
+  resolvedAt           DateTime?
+
+  shipment           Shipment @relation(fields: [shipmentId], references: [id])
+  acknowledgedByUser User?    @relation("CutoffAcknowledgedBy", fields: [acknowledgedByUserId], references: [id])
+
+  @@map("cutoff_alert")
+}

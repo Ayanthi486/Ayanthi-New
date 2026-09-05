@@ -1,0 +1,159 @@
+import type {
+  DocumentReadiness,
+  DocumentType,
+  ShipmentDocument as SharedShipmentDocument,
+} from '@hub-lanka/shared';
+
+type DecimalLike = { toString(): string };
+
+/** BR-07: the one confirmed message (CONTEXT.md §15) — never reworded. */
+export const DOCUMENT_BLOCKED_MESSAGE =
+  'Cannot generate document. Please enter Box and Weight information.';
+
+export interface ReadinessShipment {
+  boxCount: number | null;
+  weightKg: DecimalLike | null;
+}
+
+/** BR-07: only BOX and WEIGHT gate readiness — nothing else is invented as a precondition. */
+export function computeDocumentReadiness(shipment: ReadinessShipment): DocumentReadiness {
+  const missingFields: string[] = [];
+  if (shipment.boxCount === null) missingFields.push('boxCount');
+  if (shipment.weightKg === null) missingFields.push('weightKg');
+  return { ready: missingFields.length === 0, missingFields };
+}
+
+export interface DocumentShipmentRow {
+  mawbNo: string | null;
+  flightNo: string | null;
+  flightDate: Date;
+  cusdecNo: string | null;
+  boxCount: number | null;
+  weightKg: DecimalLike | null;
+  destinationAirport: { code: string } | null;
+  shipper: { name: string; address: string | null };
+  consignee: { name: string; address: string | null };
+  commodity: { name: string };
+}
+
+function formatDateOnly(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * BR-35 (single source of truth): the only fields each document type reads
+ * from the Shipment/master-data — PRD §9's "Populated from Shipment" column,
+ * field for field. Read live for DRAFT; copied into `snapshot` only at issue
+ * (decision #5). Never stored a second time in `fieldData`.
+ */
+export function buildShipmentViewModel(
+  type: DocumentType,
+  shipment: DocumentShipmentRow,
+): Record<string, unknown> {
+  const gross = shipment.weightKg ? shipment.weightKg.toString() : null;
+  const destination = shipment.destinationAirport ? shipment.destinationAirport.code : null;
+
+  switch (type) {
+    case 'SECURITY_CLEARANCE':
+      return {
+        awbNo: shipment.mawbNo,
+        cargoDescription: shipment.commodity.name,
+        boxCount: shipment.boxCount,
+        weightKg: gross,
+        flightNo: shipment.flightNo,
+        flightDate: formatDateOnly(shipment.flightDate),
+        destination,
+        shipperName: shipment.shipper.name,
+      };
+    case 'AWB_STICKER':
+      return {
+        // Hub Lanka operates out of Colombo — every real specimen's origin
+        // is CMB; there is no per-shipment "origin airport" field (only
+        // destination is stored, matching the Air Waybill's own departure).
+        origin: 'CMB',
+        awbNo: shipment.mawbNo,
+        destination,
+        boxCount: shipment.boxCount,
+      };
+    case 'ADF':
+      return {
+        flightNo: shipment.flightNo,
+        flightDate: formatDateOnly(shipment.flightDate),
+        awbNo: shipment.mawbNo,
+        // No separate multi-leg routing field exists on Shipment (mirrors
+        // Invoice's Phase 5 "Flights" free-text precedent) — destination is
+        // the closest confirmed proxy.
+        routing: destination,
+        cusdecNo: shipment.cusdecNo,
+        shipperName: shipment.shipper.name,
+        boxCount: shipment.boxCount,
+        weightKg: gross,
+      };
+    case 'AWB':
+      return {
+        shipperName: shipment.shipper.name,
+        shipperAddress: shipment.shipper.address,
+        consigneeName: shipment.consignee.name,
+        consigneeAddress: shipment.consignee.address,
+        routing: destination,
+        flightNo: shipment.flightNo,
+        flightDate: formatDateOnly(shipment.flightDate),
+        grossWeightKg: gross,
+        commodityName: shipment.commodity.name,
+        mawbNo: shipment.mawbNo,
+      };
+    case 'CDN':
+      return {
+        shipperName: shipment.shipper.name,
+        shipperAddress: shipment.shipper.address,
+        consigneeName: shipment.consignee.name,
+        consigneeAddress: shipment.consignee.address,
+        flightNo: shipment.flightNo,
+        flightDate: formatDateOnly(shipment.flightDate),
+        destination,
+        mawbNo: shipment.mawbNo,
+        boxCount: shipment.boxCount,
+        weightKg: gross,
+        commodityName: shipment.commodity.name,
+        cusdecNo: shipment.cusdecNo,
+      };
+  }
+}
+
+export interface ShipmentDocumentRow {
+  id: string;
+  shipmentId: string;
+  type: DocumentType;
+  version: number;
+  status: 'DRAFT' | 'ISSUED';
+  fieldData: unknown;
+  storageKey: string | null;
+  createdByUserId: string;
+  issuedByUserId: string | null;
+  issuedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export function toSharedDocument(
+  row: ShipmentDocumentRow,
+  viewModel: Record<string, unknown>,
+): SharedShipmentDocument {
+  return {
+    id: row.id,
+    shipmentId: row.shipmentId,
+    type: row.type,
+    version: row.version,
+    status: row.status,
+    fieldData: (row.fieldData ?? {}) as Record<string, unknown>,
+    viewModel,
+    hasStoredFile: row.storageKey !== null,
+    createdByUserId: row.createdByUserId,
+    issuedByUserId: row.issuedByUserId,
+    issuedAt: row.issuedAt ? row.issuedAt.toISOString() : null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export { formatDateOnly };

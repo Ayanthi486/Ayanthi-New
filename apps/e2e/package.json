@@ -1,0 +1,22 @@
+{
+  "name": "@hub-lanka/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Playwright browser E2E suite — critical flows across all three roles (ARCHITECTURE.md §18, DEVELOPMENT_PLAN.md Phase 10). Targets a fully running stack (web + api + postgres + redis); does not start one itself. Point PLAYWRIGHT_WEB_BASE_URL/PLAYWRIGHT_API_BASE_URL at it (defaults match docker-compose.yml's published ports).",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.55.1",
+    "@types/node": "^24.0.0",
+    "eslint": "^10.9.1",
+    "eslint-config-prettier": "^10.1.8",
+    "typescript-eslint": "^8.69.0"
+  }
+}

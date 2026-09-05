@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Prisma
+apps/api/src/generated/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Vite
+apps/web/dist/
+apps/web/.vite/
+
+# Misc
+*.pem
+.eslintcache
+
+# Local tooling state
+.claude/
+
+# StorageService local-disk adapter (ARCHITECTURE §12) — dev-only, runtime data.
+storage-local/
+apps/api/storage-local/
+
+# Playwright (apps/e2e)
+apps/e2e/test-results/
+apps/e2e/playwright-report/
+apps/e2e/.auth/
+apps/e2e/blob-report/

@@ -1,0 +1,104 @@
+import { describe, expect, it } from 'vitest';
+import {
+  addDays,
+  colomboToday,
+  parseDateOnly,
+  parseTime24,
+  toSharedShipment,
+  type ShipmentRow,
+} from './shipment.util';
+
+describe('shipment.util', () => {
+  describe('colomboToday / addDays', () => {
+    it('returns a YYYY-MM-DD string', () => {
+      expect(colomboToday()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+
+    it('addDays advances the calendar date, including across a month boundary', () => {
+      expect(addDays('2026-01-31', 1)).toBe('2026-02-01');
+      expect(addDays('2026-03-01', -1)).toBe('2026-02-28');
+    });
+  });
+
+  describe('parseDateOnly / parseTime24', () => {
+    it('parses a date-only string to UTC midnight', () => {
+      const date = parseDateOnly('2026-06-15');
+      expect(date.toISOString()).toBe('2026-06-15T00:00:00.000Z');
+    });
+
+    it('parses a 24-hour time string on the 1970-01-01 epoch date', () => {
+      const time = parseTime24('03:05');
+      expect(time.toISOString()).toBe('1970-01-01T03:05:00.000Z');
+    });
+  });
+
+  describe('toSharedShipment', () => {
+    const baseRow: ShipmentRow = {
+      id: 'shipment-1',
+      shipmentNo: 'HUB 000001',
+      mawbNo: '176 2853 0191',
+      houseAwbNo: 'HL 0106',
+      airlineId: 'airline-1',
+      airline: { name: 'Emirates' },
+      flightNo: 'EK654',
+      destinationAirportId: 'airport-1',
+      destinationAirport: { code: 'DXB' },
+      shipperId: 'shipper-1',
+      shipper: { name: 'Acme Exports' },
+      consigneeId: 'consignee-1',
+      consignee: { name: 'Acme Imports' },
+      commodityId: 'commodity-1',
+      commodity: { name: 'Edible Fish' },
+      flightDate: new Date('2026-06-15T00:00:00.000Z'),
+      handlingDate: new Date('2026-06-14T00:00:00.000Z'),
+      depTime: new Date('1970-01-01T03:05:00.000Z'),
+      cusdecNo: 'CUS-12345',
+      boxCount: 10,
+      weightKg: { toString: () => '444.500' },
+      appliedBuyingRate: { toString: () => '4.7500' },
+      appliedBuyingRateId: 'rate-1',
+      actualDepartureAt: null,
+      status: 'PENDING',
+      version: 0,
+      createdByUserId: 'user-1',
+      createdAt: new Date('2026-06-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-06-02T00:00:00.000Z'),
+    };
+
+    it('formats date/time fields as wire-friendly strings, not Date objects', () => {
+      const shared = toSharedShipment(baseRow);
+      expect(shared.flightDate).toBe('2026-06-15');
+      expect(shared.handlingDate).toBe('2026-06-14');
+      expect(shared.depTime).toBe('03:05');
+      expect(shared.weightKg).toBe('444.500');
+      expect(shared.appliedBuyingRate).toBe('4.7500');
+    });
+
+    it('denormalizes master-data names from the included relations', () => {
+      const shared = toSharedShipment(baseRow);
+      expect(shared.airlineName).toBe('Emirates');
+      expect(shared.shipperName).toBe('Acme Exports');
+      expect(shared.consigneeName).toBe('Acme Imports');
+      expect(shared.commodityName).toBe('Edible Fish');
+      expect(shared.destinationAirportCode).toBe('DXB');
+    });
+
+    it('leaves null-able fields null rather than coercing them', () => {
+      const shared = toSharedShipment({
+        ...baseRow,
+        handlingDate: null,
+        weightKg: null,
+        boxCount: null,
+        destinationAirportId: null,
+        destinationAirport: null,
+        appliedBuyingRate: null,
+        appliedBuyingRateId: null,
+      });
+      expect(shared.handlingDate).toBeNull();
+      expect(shared.weightKg).toBeNull();
+      expect(shared.boxCount).toBeNull();
+      expect(shared.destinationAirportCode).toBeNull();
+      expect(shared.appliedBuyingRate).toBeNull();
+    });
+  });
+});

@@ -1,0 +1,13 @@
+node_modules
+dist
+build
+coverage
+.turbo
+pnpm-lock.yaml
+apps/api/src/generated
+CONTEXT.md
+PRD.md
+ARCHITECTURE.md
+DEVELOPMENT_PLAN.md
+DEVELOPMENT_RULES.md
+REQUIREMENTS_TRACEABILITY.md

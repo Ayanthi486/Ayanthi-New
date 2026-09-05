@@ -1,0 +1,121 @@
+name: hub-lanka-ffms
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hublanka
+      POSTGRES_PASSWORD: hublanka_dev_password
+      POSTGRES_DB: hublanka_dev
+    # Host port 5433, not 5432 — avoids colliding with a locally installed
+    # PostgreSQL service on the developer machine. Container-to-container
+    # traffic (the api service below) still uses the default 5432 on the
+    # Docker network, unaffected by this mapping.
+    ports:
+      - '5433:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U hublanka -d hublanka_dev']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Provisioned per DEVELOPMENT_PLAN.md Phase 0 scope; the document-render
+  # queue (Phase 7, ARCHITECTURE §1/§15) is the first real consumer. Host
+  # port 6380, not 6379 — avoids colliding with a locally installed Redis on
+  # the developer machine, same reasoning as postgres's 5433 mapping.
+  # Container-to-container traffic (api/worker) still uses redis:6379.
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    ports:
+      - '6380:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      API_PORT: 3000
+      API_HOST: 0.0.0.0
+      CORS_ORIGINS: http://localhost:4173,http://localhost:5173
+      SWAGGER_ENABLED: 'true'
+      DATABASE_URL: postgresql://hublanka:hublanka_dev_password@postgres:5432/hublanka_dev?schema=public
+      APP_DATABASE_URL: postgresql://hublanka_app:hublanka_app_dev_password@postgres:5432/hublanka_dev?schema=public
+      JWT_ACCESS_SECRET: docker-compose-dev-access-secret-min-32-chars
+      JWT_REFRESH_SECRET: docker-compose-dev-refresh-secret-min-32-chars
+      LOG_LEVEL: info
+      LOG_PRETTY: 'false'
+      STORAGE_LOCAL_DIR: /repo/storage-local
+      RECEIPT_MAX_SIZE_MB: '10'
+      REDIS_URL: redis://redis:6379
+      PRINTER_ADAPTER: pdf
+      PDF_RENDER_CONCURRENCY: '2'
+      PDF_RENDER_TIMEOUT_MS: '30000'
+    ports:
+      - '3000:3000'
+    volumes:
+      # StorageService local-disk adapter (ARCHITECTURE §12) — named volume so
+      # uploaded receipts survive a container rebuild/restart in dev.
+      - api_storage:/repo/storage-local
+
+  # ARCHITECTURE §1: the second of "two deployables, not one, not twelve" —
+  # same built image as `api`, a different entry point (worker-main.ts, no
+  # HTTP server, no migrate step). Puppeteer needs Chromium's shared
+  # libraries, which the Dockerfile's runtime stage installs explicitly
+  # (Phase 7 decision #9 — Debian-based, not Alpine/musl).
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: ['node', 'apps/api/dist/worker-main.js']
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://hublanka:hublanka_dev_password@postgres:5432/hublanka_dev?schema=public
+      APP_DATABASE_URL: postgresql://hublanka_app:hublanka_app_dev_password@postgres:5432/hublanka_dev?schema=public
+      JWT_ACCESS_SECRET: docker-compose-dev-access-secret-min-32-chars
+      JWT_REFRESH_SECRET: docker-compose-dev-refresh-secret-min-32-chars
+      LOG_LEVEL: info
+      LOG_PRETTY: 'false'
+      STORAGE_LOCAL_DIR: /repo/storage-local
+      REDIS_URL: redis://redis:6379
+      PDF_RENDER_CONCURRENCY: '2'
+      PDF_RENDER_TIMEOUT_MS: '30000'
+    volumes:
+      # Same volume as `api` — the worker writes rendered PDFs here, the API
+      # reads them back for download.
+      - api_storage:/repo/storage-local
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:3000/api/v1
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - '4173:4173'
+
+volumes:
+  postgres_data:
+  api_storage:

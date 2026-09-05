@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: postgresql://hublanka:hublanka_ci_password@localhost:5432/hublanka_test?schema=public
+  # Password matches the literal value the migration creates the role with
+  # (apps/api/prisma/migrations/*_restrict_audit_log_grants/migration.sql) —
+  # not independently configurable for non-production environments.
+  APP_DATABASE_URL: postgresql://hublanka_app:hublanka_app_dev_password@localhost:5432/hublanka_test?schema=public
+  JWT_ACCESS_SECRET: ci-access-secret-at-least-32-characters-long
+  JWT_REFRESH_SECRET: ci-refresh-secret-at-least-32-characters-long
+  VITE_API_BASE_URL: http://localhost:3000/api/v1
+
+jobs:
+  ci:
+    name: Install · Lint · Typecheck · Test · Build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: hublanka
+          POSTGRES_PASSWORD: hublanka_ci_password
+          POSTGRES_DB: hublanka_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hublanka -d hublanka_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Build @hub-lanka/shared
+        # Explicit, not relying on turbo's ^build dependency firing as a
+        # side effect of a later step — @hub-lanka/shared's package.json
+        # points at its compiled dist/, which anything executing (not just
+        # type-checking) it needs to exist.
+        run: pnpm --filter @hub-lanka/shared build
+
+      - name: Apply database migrations
+        run: pnpm db:migrate:deploy
+        working-directory: apps/api
+
+      - name: Seed roles and permissions
+        run: pnpm db:seed
+        working-directory: apps/api
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: API e2e smoke test
+        run: pnpm --filter @hub-lanka/api test:e2e
+
+      - name: Build
+        run: pnpm build
+
+      - name: pnpm audit (high severity)
+        run: pnpm audit --audit-level high
+        continue-on-error: true

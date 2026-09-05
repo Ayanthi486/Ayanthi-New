@@ -1,0 +1,127 @@
+# Reference production topology for Hub Lanka FFMS (DEVELOPMENT_PLAN.md
+# Phase 11 — deployment artifacts only; no cloud provider, region, or
+# managed-service target has been chosen yet, see .env.production.example).
+#
+# This is a self-hosted, single-host reference: everything (Postgres,
+# Redis, the api/worker/web images) runs as containers on one Docker host.
+# A real deployment to a specific cloud/region would typically:
+#   - replace the `postgres` and `redis` services below with managed
+#     equivalents (their own backup/HA/monitoring — Phase 11's "nightly
+#     encrypted off-site backup, restore tested in staging" applies to
+#     whichever of these actually holds durable data)
+#   - build once in CI and push `api`/`worker`/`web` to a registry, then
+#     replace each `build:` block here with `image: <registry>/<name>:<tag>`
+#   - run the `migrate` service as a CI/CD release step rather than as a
+#     compose service
+#
+# Usage:
+#   cp .env.production.example .env.production   # then fill in every CHANGE_ME
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hublanka}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set a real password in .env.production}
+      POSTGRES_DB: ${POSTGRES_DB:-hublanka}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER:-hublanka}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Not published to the host by default — only other containers on this
+    # compose network need to reach it. Uncomment only for direct/ad-hoc
+    # DBA access, and prefer a bastion/tunnel over a public port either way.
+    # ports:
+    #   - '5432:5432'
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot release step — applies pending Prisma migrations, then exits.
+  # api/worker wait for this to *complete successfully*, not just start.
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: migrate
+    restart: 'no'
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set the privileged/migration connection string in .env.production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: api
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      # Overrides whatever host/port .env.production sets, since this is
+      # the address inside the compose network, not the host's.
+      API_HOST: 0.0.0.0
+      REDIS_URL: redis://redis:6379
+    volumes:
+      # ARCHITECTURE §12: must be a persistent volume, not container
+      # storage — see .env.production.example's storage section for why.
+      - storage_data:/data/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - '3000:3000'
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: worker
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - storage_data:/data/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      # The real public API origin, baked in at build time — see
+      # apps/web/Dockerfile's own comment on why this can't be a normal
+      # runtime env var.
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:?set the public API origin in .env.production, e.g. https://api.example.com/api/v1}
+    restart: unless-stopped
+    ports:
+      - '80:80'
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  storage_data:

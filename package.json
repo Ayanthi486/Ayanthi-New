@@ -1,0 +1,36 @@
+{
+  "name": "hub-lanka-ffms",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hub Lanka Freight Forwarding Management System — internal operations monorepo",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint:fix",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:watch": "turbo run test:watch",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\" --ignore-path .gitignore --ignore-path .prettierignore",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\" --ignore-path .gitignore --ignore-path .prettierignore",
+    "db:generate": "pnpm --filter @hub-lanka/api db:generate",
+    "db:migrate": "pnpm --filter @hub-lanka/api db:migrate",
+    "db:studio": "pnpm --filter @hub-lanka/api db:studio"
+  },
+  "devDependencies": {
+    "turbo": "^2.10.12",
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "deepmerge-ts@<8.0.0": ">=8.0.0",
+      "mysql2@<3.22.0": ">=3.22.0"
+    }
+  }
+}
