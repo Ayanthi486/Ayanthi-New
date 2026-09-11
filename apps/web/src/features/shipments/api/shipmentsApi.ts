@@ -1,5 +1,5 @@
 import type {
-  CancellationRequest,
+  ChangeShipmentStatusRequest,
   CreateShipmentRequest,
   SetCargoRequest,
   Shipment,
@@ -40,36 +40,21 @@ export async function deleteShipment(id: string): Promise<Shipment> {
   return apiFetch<Shipment>(`/shipments/${id}`, { method: 'DELETE' });
 }
 
-export async function requestCancellation(
+/**
+ * The direct, no-approval status dropdown (Schedule grid) — replaces the
+ * old cancellation-request/approve and completion-approve workflows
+ * entirely. Setting DEPARTED for the first time also captures
+ * `actualDepartureAt` in the same call (folds in what used to be the
+ * separate "record actual departure" action).
+ */
+export async function changeShipmentStatus(
   id: string,
-  reason: string,
-): Promise<CancellationRequest> {
-  return apiFetch<CancellationRequest>(`/shipments/${id}/cancellation-request`, {
-    method: 'POST',
-    body: JSON.stringify({ reason }),
+  input: ChangeShipmentStatusRequest,
+): Promise<Shipment> {
+  return apiFetch<Shipment>(`/shipments/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
   });
-}
-
-export async function listCancellationQueue(): Promise<CancellationRequest[]> {
-  return apiFetch<CancellationRequest[]>('/shipments/cancellation-requests?status=PENDING');
-}
-
-export async function reviewCancellation(
-  requestId: string,
-  decision: 'approve' | 'reject',
-  note?: string,
-): Promise<CancellationRequest> {
-  return apiFetch<CancellationRequest>(
-    `/shipments/cancellation-requests/${requestId}/${decision}`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ note }),
-    },
-  );
-}
-
-export async function completeShipment(id: string): Promise<Shipment> {
-  return apiFetch<Shipment>(`/shipments/${id}/complete`, { method: 'POST' });
 }
 
 /** BR-06: the only place BOX/WEIGHT can be entered or edited (cargo module, Phase 3). */
@@ -83,9 +68,4 @@ export async function setCargo(id: string, input: SetCargoRequest): Promise<Ship
 /** BR-44: Manager-only capture of the airline's currently effective rate onto this shipment. */
 export async function captureBuyingRate(id: string): Promise<Shipment> {
   return apiFetch<Shipment>(`/shipments/${id}/buying-rate`, { method: 'POST' });
-}
-
-/** BR-50/OQ-11: sets `actualDepartureAt` once and resolves any active cut-off alert to Passed. Immutable — 423 on a second attempt. */
-export async function recordActualDeparture(id: string): Promise<Shipment> {
-  return apiFetch<Shipment>(`/shipments/${id}/actual-departure`, { method: 'POST' });
 }

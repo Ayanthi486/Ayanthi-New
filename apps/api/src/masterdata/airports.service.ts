@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import type { Airport, CreateAirportRequest } from '@hub-lanka/shared';
 import { AuditService } from '../audit/audit.service';
-import { NotFoundError } from '../common/errors/app-error';
+import { ConflictError, NotFoundError } from '../common/errors/app-error';
+import { Prisma } from '../generated/prisma/client';
 import type { RequestUser } from '../identity/types';
 import { PrismaService } from '../prisma/prisma.service';
 import { toAirport } from './masterdata.util';
@@ -23,12 +24,21 @@ export class AirportsService {
   }
 
   async create(input: CreateAirportRequest, actor: RequestUser): Promise<Airport> {
-    const created = await this.auditService.auditedTransaction(
-      this.prisma,
-      { userId: actor.id, ipAddress: null, userAgent: null },
-      (tx) => tx.airport.create({ data: { code: input.code, name: input.name } }),
-    );
-    return toAirport(created);
+    try {
+      const created = await this.auditService.auditedTransaction(
+        this.prisma,
+        { userId: actor.id, ipAddress: null, userAgent: null },
+        (tx) => tx.airport.create({ data: { code: input.code, name: input.name } }),
+      );
+      return toAirport(created);
+    } catch (error) {
+      // Destination codes are one-time-only (DB unique constraint on
+      // `code`) — surface a clear conflict instead of a raw 500.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictError(`Destination code ${input.code} already exists`);
+      }
+      throw error;
+    }
   }
 
   async deactivate(id: string, actor: RequestUser): Promise<Airport> {

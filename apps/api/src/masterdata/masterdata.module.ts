@@ -7,6 +7,8 @@ import { CommoditiesController } from './commodities.controller';
 import { CommoditiesService } from './commodities.service';
 import { ConsigneesController } from './consignees.controller';
 import { ConsigneesService } from './consignees.service';
+import { FlightsController } from './flights.controller';
+import { FlightsService } from './flights.service';
 import { ShippersController } from './shippers.controller';
 import { ShippersService } from './shippers.service';
 
@@ -17,6 +19,7 @@ import { ShippersService } from './shippers.service';
     AirlinesController,
     AirportsController,
     CommoditiesController,
+    FlightsController,
   ],
   providers: [
     ShippersService,
@@ -24,6 +27,7 @@ import { ShippersService } from './shippers.service';
     AirlinesService,
     AirportsService,
     CommoditiesService,
+    FlightsService,
   ],
 })
 export class MasterdataModule {}

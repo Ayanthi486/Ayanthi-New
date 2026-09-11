@@ -290,7 +290,9 @@ describe('Analytics (e2e)', () => {
     // this file) — a second same-day rate for one airline is itself
     // rejected (BR-04: "must start after the currently open period began"),
     // so this needs an airline with no other rate history.
-    const airline = await prisma.airline.create({ data: { name: `E2E AC14 Airline ${RUN_ID}` } });
+    const airline = await prisma.airline.create({
+      data: { code: 'A4', name: `E2E AC14 Airline ${RUN_ID}` },
+    });
     createdAirlineIds.push(airline.id);
 
     const shipmentRes = await request(server)

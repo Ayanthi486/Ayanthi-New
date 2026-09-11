@@ -11,6 +11,7 @@ import { AirlinesPage } from '@/features/masterdata/pages/AirlinesPage';
 import { AirportsPage } from '@/features/masterdata/pages/AirportsPage';
 import { CommoditiesPage } from '@/features/masterdata/pages/CommoditiesPage';
 import { ConsigneesPage } from '@/features/masterdata/pages/ConsigneesPage';
+import { FlightsPage } from '@/features/masterdata/pages/FlightsPage';
 import { ShippersPage } from '@/features/masterdata/pages/ShippersPage';
 import { ProfilePage } from '@/features/profile/pages/ProfilePage';
 import { RateTablePage } from '@/features/rates/pages/RateTablePage';
@@ -62,7 +63,8 @@ function App() {
                   <Route
                     path="/masterdata/shippers"
                     element={
-                      <RequireRoutePermission permission="masterdata.manage">
+                      // Broader than masterdata.manage — see masterdata.shipper.create.
+                      <RequireRoutePermission permission="masterdata.shipper.create">
                         <ShippersPage />
                       </RequireRoutePermission>
                     }
@@ -70,7 +72,8 @@ function App() {
                   <Route
                     path="/masterdata/consignees"
                     element={
-                      <RequireRoutePermission permission="masterdata.manage">
+                      // Broader than masterdata.manage — see masterdata.consignee.create.
+                      <RequireRoutePermission permission="masterdata.consignee.create">
                         <ConsigneesPage />
                       </RequireRoutePermission>
                     }
@@ -78,7 +81,8 @@ function App() {
                   <Route
                     path="/masterdata/airlines"
                     element={
-                      <RequireRoutePermission permission="masterdata.manage">
+                      // Broader than masterdata.manage — see masterdata.airline.create.
+                      <RequireRoutePermission permission="masterdata.airline.create">
                         <AirlinesPage />
                       </RequireRoutePermission>
                     }
@@ -86,7 +90,8 @@ function App() {
                   <Route
                     path="/masterdata/airports"
                     element={
-                      <RequireRoutePermission permission="masterdata.manage">
+                      // Broader than masterdata.manage — see masterdata.airport.create.
+                      <RequireRoutePermission permission="masterdata.airport.create">
                         <AirportsPage />
                       </RequireRoutePermission>
                     }
@@ -96,6 +101,15 @@ function App() {
                     element={
                       <RequireRoutePermission permission="masterdata.commodity.create">
                         <CommoditiesPage />
+                      </RequireRoutePermission>
+                    }
+                  />
+                  <Route
+                    path="/masterdata/flights"
+                    element={
+                      // Broader than masterdata.manage — see masterdata.flight.create.
+                      <RequireRoutePermission permission="masterdata.flight.create">
+                        <FlightsPage />
                       </RequireRoutePermission>
                     }
                   />

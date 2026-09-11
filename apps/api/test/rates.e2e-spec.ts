@@ -62,7 +62,7 @@ describe('Rate Table (e2e)', () => {
   });
 
   async function createAdHocAirline(name: string): Promise<string> {
-    const airline = await prisma.airline.create({ data: { name } });
+    const airline = await prisma.airline.create({ data: { code: 'AH', name } });
     createdAirlineIds.push(airline.id);
     return airline.id;
   }
@@ -229,8 +229,9 @@ describe('Rate Table (e2e)', () => {
 
     const shipment = await createShipment(airlineId);
     await request(server)
-      .post(`/api/v1/shipments/${shipment.id}/complete`)
-      .set('Authorization', `Bearer ${managerToken}`);
+      .patch(`/api/v1/shipments/${shipment.id}/status`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ status: 'CONFIRMED', version: 0 });
 
     const res = await request(server)
       .post(`/api/v1/shipments/${shipment.id}/buying-rate`)

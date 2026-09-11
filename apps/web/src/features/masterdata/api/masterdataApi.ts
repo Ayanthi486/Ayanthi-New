@@ -7,7 +7,9 @@ import type {
   CreateAirportRequest,
   CreateCommodityRequest,
   CreateConsigneeRequest,
+  CreateFlightRequest,
   CreateShipperRequest,
+  Flight,
   Shipper,
 } from '@hub-lanka/shared';
 import { apiFetch } from '@/lib/apiClient';
@@ -66,4 +68,14 @@ export async function createCommodity(input: CreateCommodityRequest): Promise<Co
 }
 export async function deactivateCommodity(id: string): Promise<Commodity> {
   return apiFetch<Commodity>(`/masterdata/commodities/${id}`, { method: 'DELETE' });
+}
+
+export async function listFlights(): Promise<Flight[]> {
+  return apiFetch<Flight[]>('/masterdata/flights');
+}
+export async function createFlight(input: CreateFlightRequest): Promise<Flight> {
+  return apiFetch<Flight>('/masterdata/flights', { method: 'POST', body: JSON.stringify(input) });
+}
+export async function deactivateFlight(id: string): Promise<Flight> {
+  return apiFetch<Flight>(`/masterdata/flights/${id}`, { method: 'DELETE' });
 }

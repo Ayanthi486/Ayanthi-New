@@ -5,3 +5,21 @@ import { twMerge } from 'tailwind-merge';
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
 }
+
+/**
+ * A flight number as a single "CODE NNNN" string (e.g. "EK 0654") — the
+ * 2-character airline IATA code (letters/digits), a space, then 4 digits.
+ * Applied on every keystroke so the field self-formats as the user types.
+ */
+export function formatFlightNumber(value: string): string {
+  const alnum = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const code = alnum.slice(0, 2);
+  const digits = alnum.slice(2).replace(/\D/g, '').slice(0, 4);
+  return digits ? `${code} ${digits}` : code;
+}
+
+/** Splits a "CODE NNNN" flight number into its airline code and flight digits. */
+export function splitFlightNumber(value: string): { code: string; flightNo: string } {
+  const [code = '', flightNo = ''] = value.trim().split(' ');
+  return { code, flightNo };
+}

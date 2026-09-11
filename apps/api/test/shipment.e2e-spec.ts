@@ -30,14 +30,15 @@ interface TestShipment {
   mawbNo: string | null;
   boxCount: number | null;
   weightKg: string | null;
-  status: 'PENDING' | 'COMPLETED' | 'CANCELLED';
+  status:
+    | 'PENDING'
+    | 'CONFIRMED'
+    | 'CANCELLED'
+    | 'DEPARTED'
+    | 'PAYMENT_PENDING'
+    | 'PAYMENT_RECEIVED';
   version: number;
   depTime: string;
-}
-
-interface TestCancellationRequest {
-  id: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
 }
 
 describe('Shipment core (e2e)', () => {
@@ -80,9 +81,6 @@ describe('Shipment core (e2e)', () => {
   });
 
   afterAll(async () => {
-    await prisma.shipmentCancellationRequest.deleteMany({
-      where: { shipmentId: { in: createdShipmentIds } },
-    });
     // See cutoff.e2e-spec.ts: a live CutoffCronService sharing this database
     // can raise a real alert for one of these shipments mid-run.
     await prisma.cutoffAlert.deleteMany({ where: { shipmentId: { in: createdShipmentIds } } });
@@ -205,9 +203,14 @@ describe('Shipment core (e2e)', () => {
         .set('Authorization', `Bearer ${managerToken}`);
 
       expect(res.body.kpis.total).toBe(res.body.data.length);
-      expect(res.body.kpis.pending + res.body.kpis.completed + res.body.kpis.cancelled).toBe(
-        res.body.kpis.total,
-      );
+      expect(
+        res.body.kpis.pending +
+          res.body.kpis.confirmed +
+          res.body.kpis.cancelled +
+          res.body.kpis.departed +
+          res.body.kpis.paymentPending +
+          res.body.kpis.paymentReceived,
+      ).toBe(res.body.kpis.total);
     });
   });
 
@@ -235,92 +238,88 @@ describe('Shipment core (e2e)', () => {
       expect(res.status).toBe(403);
     });
 
-    it('Director cannot request cancellation (no shipment.cancellation.request)', async () => {
+    it('Director cannot change a shipment status (no shipment.status.update)', async () => {
       const shipment = await createShipment(managerToken);
       const res = await request(server)
-        .post(`/api/v1/shipments/${shipment.id}/cancellation-request`)
+        .patch(`/api/v1/shipments/${shipment.id}/status`)
         .set('Authorization', `Bearer ${directorToken}`)
-        .send({ reason: 'Customer changed plans' });
-      expect(res.status).toBe(403);
-    });
-
-    it('Executive cannot approve a cancellation request (no shipment.cancellation.approve)', async () => {
-      const res = await request(server)
-        .get('/api/v1/shipments/cancellation-requests')
-        .set('Authorization', `Bearer ${executiveToken}`);
-      expect(res.status).toBe(403);
-    });
-
-    it('Executive cannot complete a shipment (no shipment.completion.approve)', async () => {
-      const shipment = await createShipment(managerToken);
-      const res = await request(server)
-        .post(`/api/v1/shipments/${shipment.id}/complete`)
-        .set('Authorization', `Bearer ${executiveToken}`);
+        .send({ status: 'CONFIRMED', version: 0 });
       expect(res.status).toBe(403);
     });
   });
 
-  // --- AC-10: cancellation requires a reason and Manager approval -----------
-  describe('cancellation workflow', () => {
-    it('AC-10: a cancellation request without a reason is rejected', async () => {
+  // --- The direct, no-approval status dropdown (replaces the old cancellation-request/approve and completion-approve workflows) ---
+  describe('status change', () => {
+    it('Executive can set the base 4 values directly, no approval step', async () => {
+      const shipment = await createShipment(executiveToken);
+      const res = await request(server)
+        .patch(`/api/v1/shipments/${shipment.id}/status`)
+        .set('Authorization', `Bearer ${executiveToken}`)
+        .send({ status: 'CONFIRMED', version: 0 });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('CONFIRMED');
+      expect(res.body.version).toBe(1);
+    });
+
+    it('Executive gets 403 setting a Payment status (no shipment.status.payment)', async () => {
+      const shipment = await createShipment(executiveToken);
+      const res = await request(server)
+        .patch(`/api/v1/shipments/${shipment.id}/status`)
+        .set('Authorization', `Bearer ${executiveToken}`)
+        .send({ status: 'PAYMENT_PENDING', version: 0 });
+      expect(res.status).toBe(403);
+    });
+
+    it('Manager can set a Payment status', async () => {
       const shipment = await createShipment(managerToken);
       const res = await request(server)
-        .post(`/api/v1/shipments/${shipment.id}/cancellation-request`)
-        .set('Authorization', `Bearer ${executiveToken}`)
-        .send({ reason: '' });
+        .patch(`/api/v1/shipments/${shipment.id}/status`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({ status: 'PAYMENT_RECEIVED', version: 0 });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('PAYMENT_RECEIVED');
+    });
+
+    it('setting Departed without actualDepartureAt is rejected', async () => {
+      const shipment = await createShipment(managerToken);
+      const res = await request(server)
+        .patch(`/api/v1/shipments/${shipment.id}/status`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({ status: 'DEPARTED', version: 0 });
       expect(res.status).toBe(400);
     });
 
-    it('Executive requests, Manager approves, shipment becomes Cancelled', async () => {
-      const shipment = await createShipment(executiveToken);
-
-      const requestRes = await request(server)
-        .post(`/api/v1/shipments/${shipment.id}/cancellation-request`)
-        .set('Authorization', `Bearer ${executiveToken}`)
-        .send({ reason: 'Customer cancelled the booking' });
-      expect(requestRes.status).toBe(201);
-      expect(requestRes.body.status).toBe('PENDING');
-      const cancellationRequest = requestRes.body as TestCancellationRequest;
-
-      const approveRes = await request(server)
-        .post(`/api/v1/shipments/cancellation-requests/${cancellationRequest.id}/approve`)
+    it('setting Departed with actualDepartureAt records it and resolves an open cut-off alert', async () => {
+      const shipment = await createShipment(managerToken);
+      const res = await request(server)
+        .patch(`/api/v1/shipments/${shipment.id}/status`)
         .set('Authorization', `Bearer ${managerToken}`)
-        .send({});
-      expect(approveRes.status).toBe(201);
-      expect(approveRes.body.status).toBe('APPROVED');
+        .send({ status: 'DEPARTED', version: 0, actualDepartureAt: '2026-09-11T20:00' });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('DEPARTED');
+      expect(res.body.actualDepartureAt).not.toBeNull();
 
-      const getRes = await request(server)
-        .get(`/api/v1/shipments/${shipment.id}`)
-        .set('Authorization', `Bearer ${managerToken}`);
-      expect(getRes.body.status).toBe('CANCELLED');
+      // A second Departed transition (already has actualDepartureAt) succeeds without asking again.
+      const secondRes = await request(server)
+        .patch(`/api/v1/shipments/${shipment.id}/status`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({ status: 'DEPARTED', version: 1 });
+      expect(secondRes.status).toBe(200);
+      expect(secondRes.body.actualDepartureAt).toBe(res.body.actualDepartureAt);
     });
 
-    it('a rejected cancellation request leaves the shipment Pending and re-requestable', async () => {
-      const shipment = await createShipment(executiveToken);
-
-      const requestRes = await request(server)
-        .post(`/api/v1/shipments/${shipment.id}/cancellation-request`)
-        .set('Authorization', `Bearer ${executiveToken}`)
-        .send({ reason: 'Testing rejection path' });
-      const cancellationRequest = requestRes.body as TestCancellationRequest;
-
-      const rejectRes = await request(server)
-        .post(`/api/v1/shipments/cancellation-requests/${cancellationRequest.id}/reject`)
+    it('a stale version on the status endpoint returns 409', async () => {
+      const shipment = await createShipment(managerToken);
+      await request(server)
+        .patch(`/api/v1/shipments/${shipment.id}/status`)
         .set('Authorization', `Bearer ${managerToken}`)
-        .send({ note: 'Not a valid reason' });
-      expect(rejectRes.status).toBe(201);
-      expect(rejectRes.body.status).toBe('REJECTED');
+        .send({ status: 'CONFIRMED', version: 0 });
 
-      const getRes = await request(server)
-        .get(`/api/v1/shipments/${shipment.id}`)
-        .set('Authorization', `Bearer ${managerToken}`);
-      expect(getRes.body.status).toBe('PENDING');
-
-      const secondRequestRes = await request(server)
-        .post(`/api/v1/shipments/${shipment.id}/cancellation-request`)
-        .set('Authorization', `Bearer ${executiveToken}`)
-        .send({ reason: 'Second attempt' });
-      expect(secondRequestRes.status).toBe(201);
+      const staleRes = await request(server)
+        .patch(`/api/v1/shipments/${shipment.id}/status`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({ status: 'CANCELLED', version: 0 });
+      expect(staleRes.status).toBe(409);
     });
   });
 
@@ -380,7 +379,7 @@ describe('Shipment core (e2e)', () => {
       expect(res.status).toBe(403);
     });
 
-    it('a Manager can delete their own non-Completed shipment', async () => {
+    it('a Manager can delete their own non-Departed shipment', async () => {
       const shipment = await createShipment(managerToken);
       const res = await request(server)
         .delete(`/api/v1/shipments/${shipment.id}`)
@@ -389,28 +388,30 @@ describe('Shipment core (e2e)', () => {
     });
   });
 
-  // --- AC-12: Completed shipments are locked (BR-10/BR-49) -----------------
-  describe('Completed locking', () => {
-    it('AC-12: PATCH on a Completed shipment returns 423', async () => {
+  // --- AC-12: shipments past Pending/Confirmed are locked against editing (BR-10/BR-49) ---
+  describe('Departed locking', () => {
+    it('AC-12: PATCH on a Departed shipment returns 423', async () => {
       const shipment = await createShipment(managerToken);
-      const completeRes = await request(server)
-        .post(`/api/v1/shipments/${shipment.id}/complete`)
-        .set('Authorization', `Bearer ${managerToken}`);
-      expect(completeRes.status).toBe(201);
-      expect(completeRes.body.status).toBe('COMPLETED');
+      const departRes = await request(server)
+        .patch(`/api/v1/shipments/${shipment.id}/status`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({ status: 'DEPARTED', version: 0, actualDepartureAt: '2026-09-11T20:00' });
+      expect(departRes.status).toBe(200);
+      expect(departRes.body.status).toBe('DEPARTED');
 
       const patchRes = await request(server)
         .patch(`/api/v1/shipments/${shipment.id}`)
         .set('Authorization', `Bearer ${managerToken}`)
-        .send({ version: 0, houseAwbNo: 'HL 0001' });
+        .send({ version: 1, houseAwbNo: 'HL 0001' });
       expect(patchRes.status).toBe(423);
     });
 
-    it('AC-12: DELETE on a Completed shipment returns 423', async () => {
+    it('AC-12: DELETE on a Departed shipment returns 423', async () => {
       const shipment = await createShipment(managerToken);
       await request(server)
-        .post(`/api/v1/shipments/${shipment.id}/complete`)
-        .set('Authorization', `Bearer ${managerToken}`);
+        .patch(`/api/v1/shipments/${shipment.id}/status`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({ status: 'DEPARTED', version: 0, actualDepartureAt: '2026-09-11T20:00' });
 
       const deleteRes = await request(server)
         .delete(`/api/v1/shipments/${shipment.id}`)
@@ -423,21 +424,15 @@ describe('Shipment core (e2e)', () => {
   describe('Cancelled locking', () => {
     it('PATCH on a Cancelled shipment returns 423', async () => {
       const shipment = await createShipment(executiveToken);
-      const requestRes = await request(server)
-        .post(`/api/v1/shipments/${shipment.id}/cancellation-request`)
-        .set('Authorization', `Bearer ${executiveToken}`)
-        .send({ reason: 'Regression coverage for BR-12 lock' });
-      const cancellationRequest = requestRes.body as TestCancellationRequest;
-
       await request(server)
-        .post(`/api/v1/shipments/cancellation-requests/${cancellationRequest.id}/approve`)
-        .set('Authorization', `Bearer ${managerToken}`)
-        .send({});
+        .patch(`/api/v1/shipments/${shipment.id}/status`)
+        .set('Authorization', `Bearer ${executiveToken}`)
+        .send({ status: 'CANCELLED', version: 0 });
 
       const patchRes = await request(server)
         .patch(`/api/v1/shipments/${shipment.id}`)
         .set('Authorization', `Bearer ${managerToken}`)
-        .send({ version: 0, houseAwbNo: 'HL 0001' });
+        .send({ version: 1, houseAwbNo: 'HL 0001' });
       expect(patchRes.status).toBe(423);
     });
   });

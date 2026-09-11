@@ -18,8 +18,10 @@ export class ConsigneesController {
     return this.consigneesService.list(includeInactive === 'true');
   }
 
+  // Broader than masterdata.manage — Executive and Manager may both add
+  // consignees (mirrors BR-17's commodity.create exception).
   @Post()
-  @RequirePermission('masterdata.manage')
+  @RequirePermission('masterdata.consignee.create')
   async create(
     @Body() dto: CreateConsigneeDto,
     @CurrentUser() actor: RequestUser,

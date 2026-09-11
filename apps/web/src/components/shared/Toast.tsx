@@ -19,7 +19,7 @@ export function Toast() {
   return (
     <div
       role="status"
-      className="bg-foreground text-background fixed right-4 bottom-4 z-50 rounded-md px-4 py-2 text-sm shadow-lg"
+      className="bg-foreground text-background fixed right-4 bottom-4 z-50 rounded-md px-4 py-2 text-sm shadow-lg print:hidden"
     >
       {message}
     </div>

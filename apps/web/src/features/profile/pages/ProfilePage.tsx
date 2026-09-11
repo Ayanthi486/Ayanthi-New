@@ -79,7 +79,7 @@ export function ProfilePage() {
         : null);
 
   return (
-    <div className="flex max-w-xl flex-col gap-6">
+    <div className="mx-auto flex max-w-xl flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold">Profile</h1>
         <p className="text-muted-foreground mt-1 text-sm">Your account identity and photo.</p>

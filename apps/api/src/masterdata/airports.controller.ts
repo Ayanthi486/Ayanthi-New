@@ -18,8 +18,10 @@ export class AirportsController {
     return this.airportsService.list(includeInactive === 'true');
   }
 
+  // Broader than masterdata.manage — Executive and Manager may both add
+  // destinations (mirrors BR-17's commodity.create exception).
   @Post()
-  @RequirePermission('masterdata.manage')
+  @RequirePermission('masterdata.airport.create')
   async create(@Body() dto: CreateAirportDto, @CurrentUser() actor: RequestUser): Promise<Airport> {
     return this.airportsService.create(dto, actor);
   }

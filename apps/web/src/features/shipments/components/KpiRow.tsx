@@ -10,8 +10,11 @@ export function KpiRow({ kpis }: { kpis: ShipmentKpis }) {
   const items: { label: string; value: number }[] = [
     { label: 'Total', value: kpis.total },
     { label: 'Pending', value: kpis.pending },
-    { label: 'Completed', value: kpis.completed },
+    { label: 'Confirmed', value: kpis.confirmed },
     { label: 'Cancelled', value: kpis.cancelled },
+    { label: 'Departed', value: kpis.departed },
+    { label: 'Payment Pending', value: kpis.paymentPending },
+    { label: 'Payment Received', value: kpis.paymentReceived },
   ];
 
   return (

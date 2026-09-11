@@ -2,7 +2,7 @@
 //
 // Phase 1 scope: identity, RBAC and audit foundation (user, role,
 // permission, user_role, role_permission, refresh_token, audit_log).
-// Phase 2 scope: shipment core (shipment, shipment_cancellation_request).
+// Phase 2 scope: shipment core (shipment).
 // Phase 3 scope: master data (shipper, consignee, airline, commodity,
 // airport), the Rate Table, and shipment's normalized FK references +
 // applied buying rate. Phase 4 scope: cost_sheet, cost_sheet_line.
@@ -50,8 +50,6 @@ model User {
   refreshTokens            RefreshToken[]
   auditLogEntries          AuditLog[]
   createdShipments         Shipment[]                    @relation("ShipmentCreatedBy")
-  requestedCancellations   ShipmentCancellationRequest[] @relation("CancellationRequestedBy")
-  reviewedCancellations    ShipmentCancellationRequest[] @relation("CancellationReviewedBy")
   createdCommodities       Commodity[]                   @relation("CommodityCreatedBy")
   createdRateTableEntries  RateTable[]                   @relation("RateTableCreatedBy")
   createdCostSheets        CostSheet[]                   @relation("CostSheetCreatedBy")
@@ -171,20 +169,18 @@ model AuditLog {
 // the Phase 3 report for the backfill migration that replaced the Phase 2
 // plain-text columns.
 
+// Replaced BR-08's old fixed 3-value set with a direct, no-approval status
+// dropdown (Executive: Pending/Confirmed/Cancelled/Departed; Manager also
+// gets Payment Pending/Payment Received) — see the shipment status rework.
 enum ShipmentStatus {
   PENDING
-  COMPLETED
+  CONFIRMED
   CANCELLED
+  DEPARTED
+  PAYMENT_PENDING
+  PAYMENT_RECEIVED
 
   @@map("shipment_status")
-}
-
-enum CancellationRequestStatus {
-  PENDING
-  APPROVED
-  REJECTED
-
-  @@map("cancellation_request_status")
 }
 
 model Shipment {
@@ -244,14 +240,13 @@ model Shipment {
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 
-  createdByUser          User                          @relation("ShipmentCreatedBy", fields: [createdByUserId], references: [id])
-  cancellationRequests   ShipmentCancellationRequest[]
-  airline                Airline                       @relation(fields: [airlineId], references: [id])
-  destinationAirport     Airport?                      @relation(fields: [destinationAirportId], references: [id])
-  shipper                Shipper                       @relation(fields: [shipperId], references: [id])
-  consignee              Consignee                     @relation(fields: [consigneeId], references: [id])
-  commodity              Commodity                     @relation(fields: [commodityId], references: [id])
-  appliedBuyingRateEntry RateTable?                    @relation(fields: [appliedBuyingRateId], references: [id])
+  createdByUser          User               @relation("ShipmentCreatedBy", fields: [createdByUserId], references: [id])
+  airline                Airline            @relation(fields: [airlineId], references: [id])
+  destinationAirport     Airport?           @relation(fields: [destinationAirportId], references: [id])
+  shipper                Shipper            @relation(fields: [shipperId], references: [id])
+  consignee              Consignee          @relation(fields: [consigneeId], references: [id])
+  commodity              Commodity          @relation(fields: [commodityId], references: [id])
+  appliedBuyingRateEntry RateTable?         @relation(fields: [appliedBuyingRateId], references: [id])
   costSheet              CostSheet?
   invoice                Invoice?
   documents              ShipmentDocument[]
@@ -265,27 +260,6 @@ model Shipment {
   @@map("shipment")
 }
 
-model ShipmentCancellationRequest {
-  id                String                    @id @default(uuid())
-  shipmentId        String
-  // BR-11: mandatory.
-  reason            String
-  status            CancellationRequestStatus @default(PENDING)
-  requestedByUserId String
-  requestedAt       DateTime                  @default(now())
-  reviewedByUserId  String?
-  reviewedAt        DateTime?
-  reviewNote        String?
-
-  shipment        Shipment @relation(fields: [shipmentId], references: [id])
-  requestedByUser User     @relation("CancellationRequestedBy", fields: [requestedByUserId], references: [id])
-  reviewedByUser  User?    @relation("CancellationReviewedBy", fields: [reviewedByUserId], references: [id])
-
-  @@index([shipmentId])
-  @@index([status])
-  @@map("shipment_cancellation_request")
-}
-
 // --- Master data (Phase 3) -------------------------------------------------
 // PRD §7: shipment's shipper/consignee/commodity/airline/destination must
 // each reference an active master record. Soft-deleted via `isActive`
@@ -297,6 +271,8 @@ model Shipper {
   name      String
   // DEVELOPMENT_PLAN.md Phase 3: "with full addresses — the CDN needs them".
   address   String?
+  // Optional contact info (phone/email) — never required for a shipment.
+  contact   String?
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -310,6 +286,7 @@ model Consignee {
   id        String   @id @default(uuid())
   name      String
   address   String?
+  contact   String?
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -320,7 +297,10 @@ model Consignee {
 }
 
 model Airline {
-  id        String   @id @default(uuid())
+  id String @id @default(uuid())
+  // 2-character IATA designator (letters/digits, e.g. EK, G9) — always
+  // stored uppercase (createAirlineRequestSchema normalizes this).
+  code      String
   name      String
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -328,8 +308,31 @@ model Airline {
 
   shipments  Shipment[]
   rateTables RateTable[]
+  flights    Flight[]
 
   @@map("airline")
+}
+
+// A reusable, confirmed flight (airline + flight number + scheduled
+// departure time) — the "flight adding feature": Dep Time is captured once
+// here, at the moment a flight is added, rather than re-entered per
+// shipment on the Add Shipment form.
+model Flight {
+  id        String   @id @default(uuid())
+  airlineId String
+  flightNo  String
+  // BR-16: 24-hour picker, stored as a time-of-day value (no date component).
+  // Required — the shipment form has no fallback depTime field of its own
+  // and relies entirely on the selected/created Flight's own value.
+  depTime   DateTime @db.Time
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  airline Airline @relation(fields: [airlineId], references: [id])
+
+  @@unique([airlineId, flightNo])
+  @@map("flight")
 }
 
 // BR-17: Executive and Manager may both add commodities
@@ -338,6 +341,11 @@ model Airline {
 model Commodity {
   id              String   @id @default(uuid())
   name            String
+  // Up to 6 digits (createCommodityRequestSchema enforces the format).
+  code            String
+  // BR-16-style 24-hour time-of-day value, reused for a duration here (e.g.
+  // "03:30" = 3 hours 30 minutes) — same widget/storage shape as Flight.depTime.
+  delayHours      DateTime @db.Time
   isActive        Boolean  @default(true)
   createdByUserId String
   createdAt       DateTime @default(now())
@@ -351,7 +359,9 @@ model Commodity {
 
 model Airport {
   id        String   @id @default(uuid())
-  code      String
+  // Always stored uppercase (createAirportRequestSchema normalizes this) —
+  // one destination code exists exactly once in the system.
+  code      String   @unique
   name      String
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())

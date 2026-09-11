@@ -50,9 +50,6 @@ describe('Cargo handling (e2e)', () => {
   });
 
   afterAll(async () => {
-    await prisma.shipmentCancellationRequest.deleteMany({
-      where: { shipmentId: { in: createdShipmentIds } },
-    });
     // See cutoff.e2e-spec.ts: a live CutoffCronService sharing this database
     // can raise a real alert for one of these shipments mid-run.
     await prisma.cutoffAlert.deleteMany({ where: { shipmentId: { in: createdShipmentIds } } });
@@ -134,11 +131,12 @@ describe('Cargo handling (e2e)', () => {
     );
   });
 
-  it('is blocked once the shipment is Completed', async () => {
+  it('is blocked once the shipment has Departed', async () => {
     const shipment = await createShipment(managerToken);
     await request(server)
-      .post(`/api/v1/shipments/${shipment.id}/complete`)
-      .set('Authorization', `Bearer ${managerToken}`);
+      .patch(`/api/v1/shipments/${shipment.id}/status`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ status: 'DEPARTED', version: 0, actualDepartureAt: '2026-09-11T20:00' });
 
     const res = await request(server)
       .patch(`/api/v1/shipments/${shipment.id}/cargo`)
@@ -149,14 +147,10 @@ describe('Cargo handling (e2e)', () => {
 
   it('is blocked once the shipment is Cancelled — stricter than the general update lock', async () => {
     const shipment = await createShipment(executiveToken);
-    const requestRes = await request(server)
-      .post(`/api/v1/shipments/${shipment.id}/cancellation-request`)
-      .set('Authorization', `Bearer ${executiveToken}`)
-      .send({ reason: 'Cargo test cancellation' });
     await request(server)
-      .post(`/api/v1/shipments/cancellation-requests/${requestRes.body.id}/approve`)
-      .set('Authorization', `Bearer ${managerToken}`)
-      .send({});
+      .patch(`/api/v1/shipments/${shipment.id}/status`)
+      .set('Authorization', `Bearer ${executiveToken}`)
+      .send({ status: 'CANCELLED', version: 0 });
 
     const res = await request(server)
       .patch(`/api/v1/shipments/${shipment.id}/cargo`)

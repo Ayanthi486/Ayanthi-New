@@ -15,10 +15,19 @@ export async function createTestMasterData(
   suffix: string,
 ): Promise<TestMasterData> {
   const [airline, shipper, consignee, commodity, airport] = await Promise.all([
-    prisma.airline.create({ data: { name: `E2E Airline ${suffix}` } }),
+    prisma.airline.create({
+      data: { code: `E${suffix.slice(-1)}`.toUpperCase(), name: `E2E Airline ${suffix}` },
+    }),
     prisma.shipper.create({ data: { name: `E2E Shipper ${suffix}` } }),
     prisma.consignee.create({ data: { name: `E2E Consignee ${suffix}` } }),
-    prisma.commodity.create({ data: { name: `E2E Commodity ${suffix}`, createdByUserId } }),
+    prisma.commodity.create({
+      data: {
+        name: `E2E Commodity ${suffix}`,
+        code: '000001',
+        delayHours: new Date('1970-01-01T00:00:00.000Z'),
+        createdByUserId,
+      },
+    }),
     prisma.airport.create({
       data: { code: `X${suffix.slice(-2)}`, name: `E2E Airport ${suffix}` },
     }),

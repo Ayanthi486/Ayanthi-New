@@ -20,9 +20,12 @@ export const PERMISSION_KEYS = [
   'shipment.create',
   'shipment.update',
   'shipment.delete.own',
-  'shipment.cancellation.request',
-  'shipment.cancellation.approve',
-  'shipment.completion.approve',
+  // Direct status-change dropdown (Schedule grid). Base grants Pending/
+  // Confirmed/Cancelled/Departed; .payment additionally unlocks Payment
+  // Pending/Payment Received. Replaces the old cancellation-request/approve
+  // and completion-approve workflow entirely.
+  'shipment.status.update',
+  'shipment.status.payment',
   'cargo.boxweight.enter',
   'rate.buying.enter',
   'rate.table.manage',
@@ -42,8 +45,12 @@ export const PERMISSION_KEYS = [
   'documents.manage',
   'documents.view.readonly',
   'cutoff.acknowledge',
-  'shipment.actual_departure.record',
   'masterdata.commodity.create',
+  'masterdata.airport.create',
+  'masterdata.airline.create',
+  'masterdata.flight.create',
+  'masterdata.shipper.create',
+  'masterdata.consignee.create',
   'masterdata.manage',
   'masterdata.view',
   'shipment.view',

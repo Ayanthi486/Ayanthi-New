@@ -102,3 +102,12 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Schedule "Print" button (SchedulePage.tsx) — landscape A4 gives the
+   grid's many columns room to fit without shrinking illegibly. Element
+   visibility for print (hiding chrome/filters/Actions) is handled inline
+   via Tailwind's `print:hidden` variant, not here. */
+@page {
+  size: A4 landscape;
+  margin: 12mm;
+}

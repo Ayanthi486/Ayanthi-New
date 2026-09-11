@@ -70,7 +70,7 @@ export function AnalyticsFilters({
           <option value="">All airlines</option>
           {airlinesQuery.data?.map((a) => (
             <option key={a.id} value={a.id}>
-              {a.name}
+              {a.code} — {a.name}
             </option>
           ))}
         </select>

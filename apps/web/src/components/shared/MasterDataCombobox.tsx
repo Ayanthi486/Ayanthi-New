@@ -19,6 +19,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -37,6 +38,17 @@ export interface MasterDataCreateField {
   label: string;
   required?: boolean;
   placeholder?: string;
+  /** Defaults to 'text'. 'time' renders a 24-hour picker (BR-16). 'textarea' renders a multi-line box (e.g. a postal address). */
+  type?: 'text' | 'time' | 'textarea';
+  /** 'textarea' only — visible rows. Defaults to 3. */
+  rows?: number;
+  maxLength?: number;
+  /** Applied to every keystroke's value before it's stored (e.g. uppercase a code, strip non-letters). */
+  transform?: (value: string) => string;
+  /** Locked to `value` and not directly editable — e.g. showing the already-selected parent record's code for context. */
+  readOnly?: boolean;
+  /** Seeds this field's value; required (and otherwise ignored) when `readOnly` is set. */
+  value?: string;
 }
 
 export interface MasterDataComboboxProps {
@@ -49,6 +61,10 @@ export interface MasterDataComboboxProps {
   onChange: (id: string) => void;
   inputId?: string;
   ariaInvalid?: boolean;
+  /** Caps how many characters can be typed into the search input itself (e.g. a 2-letter airline code). */
+  inputMaxLength?: number;
+  /** Applied to every keystroke typed into the search input itself (e.g. digits-only, uppercase). */
+  inputTransform?: (value: string) => string;
   /** Gated by the real permission for this entity (RequirePermission-equivalent — presentation only). */
   canCreate: boolean;
   isCreating?: boolean;
@@ -89,6 +105,8 @@ export function MasterDataCombobox({
   onChange,
   inputId,
   ariaInvalid,
+  inputMaxLength,
+  inputTransform,
   canCreate,
   isCreating,
   createError,
@@ -202,10 +220,12 @@ export function MasterDataCombobox({
               autoComplete="off"
               placeholder={placeholder}
               className="pr-14"
+              maxLength={inputMaxLength}
               value={displayValue}
               onFocus={openWithCurrentSelection}
               onChange={(e) => {
-                setQueryAndResetHighlight(e.target.value);
+                const next = inputTransform ? inputTransform(e.target.value) : e.target.value;
+                setQueryAndResetHighlight(next);
                 if (!open) setOpen(true);
               }}
               onKeyDown={handleKeyDown}
@@ -240,24 +260,7 @@ export function MasterDataCombobox({
             {isLoading && <p className="text-muted-foreground px-2 py-3 text-sm">Loading…</p>}
 
             {!isLoading && filtered.length === 0 && (
-              <div className="flex flex-col gap-2 px-2 py-3">
-                <p className="text-muted-foreground text-sm">No {entityLabel} found</p>
-                {canCreate && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="justify-start"
-                    onClick={() => {
-                      setCreateSession((n) => n + 1);
-                      setCreateOpen(true);
-                    }}
-                  >
-                    <Plus className="size-4" aria-hidden="true" />
-                    Add New {entityLabel}
-                  </Button>
-                )}
-              </div>
+              <p className="text-muted-foreground px-2 py-3 text-sm">No {entityLabel} found</p>
             )}
 
             {!isLoading &&
@@ -292,6 +295,27 @@ export function MasterDataCombobox({
                 </button>
               ))}
           </div>
+
+          {/* Always available, not just when a search comes up empty — the
+              user can add a new record even while browsing existing matches. */}
+          {canCreate && (
+            <div className="border-border mt-1 border-t pt-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setCreateSession((n) => n + 1);
+                  setCreateOpen(true);
+                }}
+              >
+                <Plus className="size-4" aria-hidden="true" />
+                Add New {entityLabel}
+              </Button>
+            </div>
+          )}
         </PopoverContent>
       </Popover>
 
@@ -346,7 +370,18 @@ function CreateMasterDataDialog({
   // The parent remounts this component (via a `key` bumped on every open)
   // each time the dialog is opened, so these lazy initializers are enough
   // to seed fresh state per-open — no effect needed to "reset" them.
-  const [values, setValues] = useState<Record<string, string>>(() => ({ name: initialName }));
+  const [values, setValues] = useState<Record<string, string>>(() => {
+    // The 'name' field's own transform (if any) applies to the seeded
+    // search query too — otherwise a query longer than e.g. a 2-letter
+    // code's maxLength would show untransformed until the user edits it.
+    const nameTransform = fields.find((f) => f.key === 'name')?.transform;
+    return {
+      name: nameTransform ? nameTransform(initialName) : initialName,
+      ...Object.fromEntries(
+        fields.filter((f) => f.readOnly && f.value !== undefined).map((f) => [f.key, f.value as string]),
+      ),
+    };
+  });
   const [confirmingDuplicate, setConfirmingDuplicate] = useState(false);
 
   const nameValue = values.name ?? '';
@@ -359,8 +394,16 @@ function CreateMasterDataDialog({
   const missingRequired = fields.some((f) => f.required && !values[f.key]?.trim());
 
   async function create() {
-    const created = await onCreate(values);
-    onCreated(created);
+    try {
+      const created = await onCreate(values);
+      onCreated(created);
+    } catch {
+      // `onCreate` may reject before ever calling its own mutation (e.g. a
+      // client-side lookup like "no Airline matches this code") — errors are
+      // surfaced via the `createError` prop the caller manages, so swallow
+      // here rather than letting this become an unhandled rejection; the
+      // dialog just stays open.
+    }
   }
 
   function handleSubmit(event: FormEvent) {
@@ -420,13 +463,38 @@ function CreateMasterDataDialog({
                     </span>
                   )}
                 </div>
-                <Input
-                  id={`create-${field.key}`}
-                  autoFocus={field.key === 'name'}
-                  placeholder={field.placeholder}
-                  value={values[field.key] ?? ''}
-                  onChange={(e) => setValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                />
+                {field.type === 'textarea' ? (
+                  <Textarea
+                    id={`create-${field.key}`}
+                    rows={field.rows ?? 3}
+                    placeholder={field.placeholder}
+                    maxLength={field.maxLength}
+                    readOnly={field.readOnly}
+                    className={field.readOnly ? 'bg-muted text-muted-foreground' : undefined}
+                    value={values[field.key] ?? ''}
+                    onChange={(e) => {
+                      if (field.readOnly) return;
+                      const value = field.transform ? field.transform(e.target.value) : e.target.value;
+                      setValues((prev) => ({ ...prev, [field.key]: value }));
+                    }}
+                  />
+                ) : (
+                  <Input
+                    id={`create-${field.key}`}
+                    type={field.type ?? 'text'}
+                    autoFocus={field.key === 'name'}
+                    placeholder={field.placeholder}
+                    maxLength={field.maxLength}
+                    readOnly={field.readOnly}
+                    className={field.readOnly ? 'bg-muted text-muted-foreground' : undefined}
+                    value={values[field.key] ?? ''}
+                    onChange={(e) => {
+                      if (field.readOnly) return;
+                      const value = field.transform ? field.transform(e.target.value) : e.target.value;
+                      setValues((prev) => ({ ...prev, [field.key]: value }));
+                    }}
+                  />
+                )}
               </div>
             ))}
             {createError && <p className="text-destructive text-sm">{createError}</p>}

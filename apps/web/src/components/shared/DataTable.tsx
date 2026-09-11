@@ -1,10 +1,13 @@
 import { flexRender, getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
+import { cn } from '@/lib/utils';
 
 interface DataTableProps<TData> {
   columns: ColumnDef<TData, unknown>[];
   data: TData[];
   isLoading?: boolean;
   emptyMessage?: string;
+  /** Hides the last column (typically Actions) when printing — shown normally on screen. */
+  hideLastColumnOnPrint?: boolean;
 }
 
 /**
@@ -23,6 +26,7 @@ export function DataTable<TData>({
   data,
   isLoading,
   emptyMessage = 'No records.',
+  hideLastColumnOnPrint,
 }: DataTableProps<TData>) {
   const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel() });
 
@@ -32,8 +36,16 @@ export function DataTable<TData>({
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id} className="border-border border-b text-left">
-              {headerGroup.headers.map((header) => (
-                <th key={header.id} className="px-4 py-3 font-medium whitespace-nowrap">
+              {headerGroup.headers.map((header, index) => (
+                <th
+                  key={header.id}
+                  className={cn(
+                    'px-4 py-3 font-medium whitespace-nowrap',
+                    hideLastColumnOnPrint &&
+                      index === headerGroup.headers.length - 1 &&
+                      'print:hidden',
+                  )}
+                >
                   {header.isPlaceholder
                     ? null
                     : flexRender(header.column.columnDef.header, header.getContext())}
@@ -43,15 +55,24 @@ export function DataTable<TData>({
           ))}
         </thead>
         <tbody>
-          {table.getRowModel().rows.map((row) => (
-            <tr key={row.id} className="border-border border-b last:border-0">
-              {row.getVisibleCells().map((cell) => (
-                <td key={cell.id} className="px-4 py-3 whitespace-nowrap">
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {table.getRowModel().rows.map((row) => {
+            const cells = row.getVisibleCells();
+            return (
+              <tr key={row.id} className="border-border border-b last:border-0">
+                {cells.map((cell, index) => (
+                  <td
+                    key={cell.id}
+                    className={cn(
+                      'px-4 py-3 whitespace-nowrap',
+                      hideLastColumnOnPrint && index === cells.length - 1 && 'print:hidden',
+                    )}
+                  >
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       {isLoading && <p className="text-muted-foreground p-4 text-sm">Loading…</p>}

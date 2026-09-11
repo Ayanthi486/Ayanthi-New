@@ -26,7 +26,7 @@ export class AirlinesService {
     const created = await this.auditService.auditedTransaction(
       this.prisma,
       { userId: actor.id, ipAddress: null, userAgent: null },
-      (tx) => tx.airline.create({ data: { name: input.name } }),
+      (tx) => tx.airline.create({ data: { code: input.code, name: input.name } }),
     );
     return toAirline(created);
   }

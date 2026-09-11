@@ -7,6 +7,7 @@ import {
 import type { ColumnDef } from '@tanstack/react-table';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { MasterDataListPage } from '@/features/masterdata/components/MasterDataListPage';
 import { MasterDataNav } from '@/features/masterdata/components/MasterDataNav';
 import {
@@ -20,6 +21,14 @@ const columns: ColumnDef<Consignee, unknown>[] = [
   {
     header: 'Address',
     accessorKey: 'address',
+    cell: ({ getValue }) => {
+      const value = getValue<string | null>();
+      return value ? <span className="whitespace-pre-line">{value}</span> : '—';
+    },
+  },
+  {
+    header: 'Contact',
+    accessorKey: 'contact',
     cell: ({ getValue }) => getValue<string | null>() ?? '—',
   },
 ];
@@ -44,7 +53,11 @@ export function ConsigneesPage() {
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="consignee-address">Address</Label>
-              <Input id="consignee-address" {...register('address')} />
+              <Textarea id="consignee-address" rows={3} {...register('address')} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="consignee-contact">Contact</Label>
+              <Input id="consignee-contact" {...register('contact')} />
             </div>
           </>
         )}

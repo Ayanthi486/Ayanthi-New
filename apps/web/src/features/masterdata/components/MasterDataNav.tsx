@@ -4,11 +4,9 @@ import { cn } from '@/lib/utils';
 const LINKS = [
   { to: '/masterdata/shippers', label: 'Shippers' },
   { to: '/masterdata/consignees', label: 'Consignees' },
-  { to: '/masterdata/airlines', label: 'Airlines' },
-  { to: '/masterdata/airports', label: 'Airports' },
 ];
 
-/** Sub-nav between the four Manager-only master-data screens (Commodities has its own broader permission — see App.tsx). */
+/** Sub-nav between the Shippers and Consignees master-data screens — each gated by its own broader-than-masterdata.manage permission, same as Commodities/Airports/Airlines (see App.tsx). */
 export function MasterDataNav() {
   const location = useLocation();
 

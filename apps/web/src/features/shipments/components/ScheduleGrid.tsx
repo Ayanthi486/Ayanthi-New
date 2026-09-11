@@ -3,10 +3,8 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { Link } from 'react-router-dom';
 import type { Shipment } from '@hub-lanka/shared';
 import { DataTable } from '@/components/shared/DataTable';
-import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Button } from '@/components/ui/button';
-import { CutoffIndicator } from '@/features/cutoff/components/CutoffIndicator';
-import { useActiveCutoffAlerts } from '@/features/cutoff/hooks/useCutoff';
+import { ChangeStatusControl } from '@/features/shipments/components/ChangeStatusControl';
 import { useToastStore } from '@/lib/toastStore';
 
 /** BR-22/AC-08: fixed tracking portal, opened in a new tab with noopener,noreferrer. */
@@ -17,9 +15,13 @@ const dash = (value: string | number | null): string | number => value ?? '—';
 /**
  * Daily Shipment Schedule grid (PRD §5.2), on the shared `DataTable`
  * (TanStack Table v8 — see DataTable.tsx and the Phase 3 report for why
- * Phase 2 used plain markup instead). Columns are exactly the confirmed
- * set — CUS NO/FLT ATD/BOOKED BOX/BOOKED WEIGHT are deliberately excluded
- * (BR-23), and View is a leftmost row action, not a data column (BR-24).
+ * Phase 2 used plain markup instead). Sorted by Dep Time ascending — that
+ * ordering comes from the API (`shipment.service.ts`'s `list()`, BR-15/
+ * AC-05/AC-06), never re-sorted client-side. Column set per direct request:
+ * DEP TIME, MAWB NO, DEST, FLIGHT, DATE, SHIPPER, CONSIGNEE, BOX, WEIGHT,
+ * CUT-OFF TIME, STATUS, Actions (View/Copy MAWB/Track — no Edit, no
+ * Shipment ID/COMMODITY columns, and no separate alert-badge CUT-OFF
+ * column — that's still shown on the Dashboard's shipment preview).
  */
 export function ScheduleGrid({
   shipments,
@@ -29,24 +31,9 @@ export function ScheduleGrid({
   isLoading: boolean;
 }) {
   const showToast = useToastStore((state) => state.show);
-  const activeCutoffAlertsQuery = useActiveCutoffAlerts();
-  const alertsByShipmentId = useMemo(
-    () => new Map((activeCutoffAlertsQuery.data ?? []).map((alert) => [alert.shipmentId, alert])),
-    [activeCutoffAlertsQuery.data],
-  );
 
   const columns = useMemo<ColumnDef<Shipment, unknown>[]>(
     () => [
-      {
-        id: 'view',
-        header: '',
-        cell: ({ row }) => (
-          <Link to={`/shipments/${row.original.id}`} className="text-primary hover:underline">
-            View
-          </Link>
-        ),
-      },
-      { header: 'Shipment ID', accessorKey: 'shipmentNo' },
       { header: 'DEP TIME', accessorKey: 'depTime' },
       {
         header: 'MAWB NO',
@@ -59,14 +46,16 @@ export function ScheduleGrid({
         cell: ({ getValue }) => dash(getValue<string | null>()),
       },
       {
+        id: 'flight',
         header: 'FLIGHT',
-        accessorKey: 'flightNo',
-        cell: ({ getValue }) => dash(getValue<string | null>()),
+        // Airline code + flight number together (e.g. "EK 0654"), matching
+        // the Add Shipment form's combined FLIGHT field.
+        cell: ({ row }) =>
+          row.original.flightNo ? `${row.original.airlineCode} ${row.original.flightNo}` : '—',
       },
       { header: 'DATE', accessorKey: 'flightDate' },
       { header: 'SHIPPER', accessorKey: 'shipperName' },
       { header: 'CONSIGNEE', accessorKey: 'consigneeName' },
-      { header: 'COMMODITY', accessorKey: 'commodityName' },
       {
         header: 'BOX',
         accessorKey: 'boxCount',
@@ -77,20 +66,13 @@ export function ScheduleGrid({
         accessorKey: 'weightKg',
         cell: ({ getValue }) => dash(getValue<string | null>()),
       },
+      // Dep Time minus the shipment's Commodity's Delay Hours — computed
+      // server-side (shipment.util.ts's computeCutoffTime).
+      { header: 'CUT-OFF TIME', accessorKey: 'cutoffTime' },
       {
+        id: 'status',
         header: 'STATUS',
-        accessorKey: 'status',
-        cell: ({ getValue }) => <StatusBadge status={getValue<Shipment['status']>()} />,
-      },
-      {
-        id: 'cutoff',
-        header: 'CUT-OFF',
-        cell: ({ row }) => (
-          <CutoffIndicator
-            shipment={row.original}
-            alert={alertsByShipmentId.get(row.original.id)}
-          />
-        ),
+        cell: ({ row }) => <ChangeStatusControl shipment={row.original} />,
       },
       {
         id: 'actions',
@@ -99,9 +81,9 @@ export function ScheduleGrid({
           const mawbNo = row.original.mawbNo;
           return (
             <div className="flex items-center gap-2">
-              <Link to={`/shipments/${row.original.id}?edit=1`}>
+              <Link to={`/shipments/${row.original.id}`}>
                 <Button variant="outline" size="sm">
-                  Edit
+                  View
                 </Button>
               </Link>
               <Button
@@ -127,7 +109,7 @@ export function ScheduleGrid({
         },
       },
     ],
-    [showToast, alertsByShipmentId],
+    [showToast],
   );
 
   return (
@@ -136,6 +118,7 @@ export function ScheduleGrid({
       data={shipments}
       isLoading={isLoading}
       emptyMessage="No shipments for this view."
+      hideLastColumnOnPrint
     />
   );
 }

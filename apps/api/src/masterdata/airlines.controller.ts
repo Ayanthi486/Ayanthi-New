@@ -18,8 +18,10 @@ export class AirlinesController {
     return this.airlinesService.list(includeInactive === 'true');
   }
 
+  // Broader than masterdata.manage — Executive and Manager may both add
+  // airlines (needed to complete the flight-adding flow — see FlightsController).
   @Post()
-  @RequirePermission('masterdata.manage')
+  @RequirePermission('masterdata.airline.create')
   async create(@Body() dto: CreateAirlineDto, @CurrentUser() actor: RequestUser): Promise<Airline> {
     return this.airlinesService.create(dto, actor);
   }

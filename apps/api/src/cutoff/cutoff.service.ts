@@ -37,11 +37,11 @@ export class CutoffService {
     };
   }
 
-  /** Decision #4: Cancelled and soft-deleted shipments are excluded; Completed is not (BR-67). */
+  /** Decision #4/BR-67: only Cancelled (and soft-deleted) shipments are excluded — every other status is still evaluated. */
   async evaluateAll(now: Date = new Date()): Promise<void> {
     const thresholds = this.getThresholds();
     const shipments = await this.prisma.shipment.findMany({
-      where: { isDeleted: false, status: { in: ['PENDING', 'COMPLETED'] } },
+      where: { isDeleted: false, status: { not: 'CANCELLED' } },
       select: {
         id: true,
         flightDate: true,

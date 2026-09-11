@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import type {
-  CancellationRequest,
+  ChangeShipmentStatusRequest,
   CreateShipmentRequest,
   Shipment,
+  ShipmentKpis,
   ShipmentListQuery,
   ShipmentListResponse,
+  ShipmentStatus,
   UpdateShipmentRequest,
 } from '@hub-lanka/shared';
 import { AuditService } from '../audit/audit.service';
@@ -19,6 +21,7 @@ import {
 import { CutoffService } from '../cutoff/cutoff.service';
 import { DocumentsService } from '../documents/documents.service';
 import type { Prisma } from '../generated/prisma/client';
+import { PermissionsService } from '../identity/permissions.service';
 import type { RequestUser } from '../identity/types';
 import { PrismaService } from '../prisma/prisma.service';
 import { RatesService } from '../rates/rates.service';
@@ -27,6 +30,7 @@ import {
   SHIPMENT_WITH_NAMES_INCLUDE,
   addDays,
   colomboToday,
+  parseColomboDateTime,
   parseDateOnly,
   parseTime24,
   toSharedShipment,
@@ -34,33 +38,11 @@ import {
 
 const DEFAULT_PAGE_SIZE = 50;
 
-interface CancellationRequestRow {
-  id: string;
-  shipmentId: string;
-  reason: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  requestedByUserId: string;
-  requestedAt: Date;
-  reviewedByUserId: string | null;
-  reviewedAt: Date | null;
-  reviewNote: string | null;
-  shipment: { shipmentNo: string };
-}
-
-function toSharedCancellationRequest(row: CancellationRequestRow): CancellationRequest {
-  return {
-    id: row.id,
-    shipmentId: row.shipmentId,
-    shipmentNo: row.shipment.shipmentNo,
-    reason: row.reason,
-    status: row.status,
-    requestedByUserId: row.requestedByUserId,
-    requestedAt: row.requestedAt.toISOString(),
-    reviewedByUserId: row.reviewedByUserId,
-    reviewedAt: row.reviewedAt ? row.reviewedAt.toISOString() : null,
-    reviewNote: row.reviewNote,
-  };
-}
+/** Statuses treated as "still active" — editable via the general update path and eligible for cargo/buying-rate capture. */
+const ACTIVE_STATUSES: ShipmentStatus[] = ['PENDING', 'CONFIRMED'];
+/** Statuses a shipment can no longer be deleted from, once reached. */
+const DELETE_LOCKED_STATUSES: ShipmentStatus[] = ['DEPARTED', 'PAYMENT_RECEIVED'];
+const PAYMENT_STATUSES: ShipmentStatus[] = ['PAYMENT_PENDING', 'PAYMENT_RECEIVED'];
 
 /** Shipment core (Phase 2, DEVELOPMENT_PLAN.md). All business rules live here — the controller only parses and delegates (ARCHITECTURE §4). */
 @Injectable()
@@ -71,6 +53,7 @@ export class ShipmentService {
     private readonly ratesService: RatesService,
     private readonly documentsService: DocumentsService,
     private readonly cutoffService: CutoffService,
+    private readonly permissionsService: PermissionsService,
   ) {}
 
   async create(input: CreateShipmentRequest, actor: RequestUser): Promise<Shipment> {
@@ -126,11 +109,9 @@ export class ShipmentService {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? DEFAULT_PAGE_SIZE;
 
-    const [total, pending, completed, cancelled, rows] = await Promise.all([
+    const [total, byStatus, rows] = await Promise.all([
       this.prisma.shipment.count({ where }),
-      this.prisma.shipment.count({ where: { ...where, status: 'PENDING' } }),
-      this.prisma.shipment.count({ where: { ...where, status: 'COMPLETED' } }),
-      this.prisma.shipment.count({ where: { ...where, status: 'CANCELLED' } }),
+      this.prisma.shipment.groupBy({ by: ['status'], where, _count: true }),
       this.prisma.shipment.findMany({
         where,
         orderBy: { depTime: 'asc' },
@@ -140,10 +121,22 @@ export class ShipmentService {
       }),
     ]);
 
+    const countFor = (status: ShipmentStatus): number =>
+      byStatus.find((row) => row.status === status)?._count ?? 0;
+    const kpis: ShipmentKpis = {
+      total,
+      pending: countFor('PENDING'),
+      confirmed: countFor('CONFIRMED'),
+      cancelled: countFor('CANCELLED'),
+      departed: countFor('DEPARTED'),
+      paymentPending: countFor('PAYMENT_PENDING'),
+      paymentReceived: countFor('PAYMENT_RECEIVED'),
+    };
+
     return {
       data: rows.map(toSharedShipment),
       meta: { page, pageSize, total },
-      kpis: { total, pending, completed, cancelled },
+      kpis,
     };
   }
 
@@ -152,7 +145,7 @@ export class ShipmentService {
     return toSharedShipment(row);
   }
 
-  /** BR-10: a Completed shipment rejects edit (423). ARCHITECTURE §20: optimistic lock, stale version → 409. */
+  /** BR-10: a shipment past Pending/Confirmed rejects edit (423). ARCHITECTURE §20: optimistic lock, stale version → 409. */
   async update(id: string, input: UpdateShipmentRequest, actor: RequestUser): Promise<Shipment> {
     const updated = await this.auditService.auditedTransaction(
       this.prisma,
@@ -160,15 +153,15 @@ export class ShipmentService {
       async (tx) => {
         const existing = await tx.shipment.findFirst({ where: { id, isDeleted: false } });
         if (!existing) throw new NotFoundError('Shipment not found');
-        if (existing.status === 'COMPLETED') {
-          throw new LockedError('This shipment is Completed and locked against editing.');
-        }
-        // BR-12: a Cancelled shipment's record is retained, not reopened for
-        // editing — matches CargoService's stricter "Pending only" posture
-        // (see its own comment) so a cancelled shipment's core fields can't
-        // be silently rewritten after the fact either.
-        if (existing.status === 'CANCELLED') {
-          throw new LockedError('This shipment is Cancelled and locked against editing.');
+        // BR-10/BR-12: once a shipment has moved past Pending/Confirmed
+        // (Cancelled, Departed, or either Payment status), its core fields
+        // are retained, not reopened for editing — matches CargoService's
+        // stricter "Pending only" posture (see its own comment) so a
+        // settled shipment's core fields can't be silently rewritten.
+        if (!ACTIVE_STATUSES.includes(existing.status)) {
+          throw new LockedError(
+            `This shipment is ${existing.status} and locked against editing.`,
+          );
         }
 
         const { version, ...changes } = input;
@@ -269,7 +262,7 @@ export class ShipmentService {
     return toSharedShipment(updated);
   }
 
-  /** BR-46/BR-47/BR-49: a Manager may delete only a shipment they themselves created, and never a Completed one. Soft delete (OQ-9). */
+  /** BR-46/BR-47/BR-49: a Manager may delete only a shipment they themselves created, and never one that has Departed or had Payment Received. Soft delete (OQ-9). */
   async delete(id: string, actor: RequestUser): Promise<Shipment> {
     const deleted = await this.auditService.auditedTransaction(
       this.prisma,
@@ -280,8 +273,8 @@ export class ShipmentService {
         if (existing.createdByUserId !== actor.id) {
           throw new ForbiddenError('You may only delete shipments you created yourself');
         }
-        if (existing.status === 'COMPLETED') {
-          throw new LockedError('A Completed shipment cannot be deleted');
+        if (DELETE_LOCKED_STATUSES.includes(existing.status)) {
+          throw new LockedError(`A ${existing.status} shipment cannot be deleted`);
         }
 
         return tx.shipment.update({
@@ -295,144 +288,65 @@ export class ShipmentService {
     return toSharedShipment(deleted);
   }
 
-  /** BR-11: only from Pending, reason mandatory (validated by Zod before this runs). */
-  async requestCancellation(
-    shipmentId: string,
-    reason: string,
-    actor: RequestUser,
-  ): Promise<CancellationRequest> {
-    const created = await this.auditService.auditedTransaction(
-      this.prisma,
-      { userId: actor.id, ipAddress: null, userAgent: null },
-      async (tx) => {
-        const shipment = await this.findActiveOrThrow(shipmentId, tx);
-        if (shipment.status !== 'PENDING') {
-          throw new BusinessRuleError('Only a Pending shipment may have a cancellation requested');
-        }
-
-        const openRequest = await tx.shipmentCancellationRequest.findFirst({
-          where: { shipmentId, status: 'PENDING' },
-        });
-        if (openRequest) {
-          throw new ConflictError('A cancellation request is already pending for this shipment');
-        }
-
-        return tx.shipmentCancellationRequest.create({
-          data: { shipmentId, reason, requestedByUserId: actor.id },
-          include: { shipment: { select: { shipmentNo: true } } },
-        });
-      },
-    );
-
-    return toSharedCancellationRequest(created);
-  }
-
-  async listCancellationQueue(
-    status: 'PENDING' | 'APPROVED' | 'REJECTED' = 'PENDING',
-  ): Promise<CancellationRequest[]> {
-    const rows = await this.prisma.shipmentCancellationRequest.findMany({
-      where: { status },
-      orderBy: { requestedAt: 'asc' },
-      include: { shipment: { select: { shipmentNo: true } } },
-    });
-    return rows.map(toSharedCancellationRequest);
-  }
-
-  /** Manager-only (permission-gated at the controller). Approve transitions the shipment to CANCELLED (BR-12); reject leaves it Pending, re-requestable. */
-  async reviewCancellation(
-    requestId: string,
-    decision: 'approve' | 'reject',
-    actor: RequestUser,
-    note?: string,
-  ): Promise<CancellationRequest> {
-    const reviewed = await this.auditService.auditedTransaction(
-      this.prisma,
-      { userId: actor.id, ipAddress: null, userAgent: null },
-      async (tx) => {
-        const request = await tx.shipmentCancellationRequest.findUnique({
-          where: { id: requestId },
-        });
-        if (!request) throw new NotFoundError('Cancellation request not found');
-        if (request.status !== 'PENDING') {
-          throw new BusinessRuleError('This cancellation request has already been reviewed');
-        }
-
-        if (decision === 'approve') {
-          const shipment = await tx.shipment.findFirst({
-            where: { id: request.shipmentId, isDeleted: false },
-          });
-          if (!shipment) throw new NotFoundError('Shipment not found');
-          if (shipment.status !== 'PENDING') {
-            throw new BusinessRuleError('Only a Pending shipment can be cancelled');
-          }
-          await tx.shipment.update({ where: { id: shipment.id }, data: { status: 'CANCELLED' } });
-        }
-
-        return tx.shipmentCancellationRequest.update({
-          where: { id: requestId },
-          data: {
-            status: decision === 'approve' ? 'APPROVED' : 'REJECTED',
-            reviewedByUserId: actor.id,
-            reviewedAt: new Date(),
-            reviewNote: note ?? null,
-          },
-          include: { shipment: { select: { shipmentNo: true } } },
-        });
-      },
-    );
-
-    return toSharedCancellationRequest(reviewed);
-  }
-
-  /** BR-09: single guarded PENDING → COMPLETED transition. */
-  async complete(id: string, actor: RequestUser): Promise<Shipment> {
-    const completed = await this.auditService.auditedTransaction(
-      this.prisma,
-      { userId: actor.id, ipAddress: null, userAgent: null },
-      async (tx) => {
-        const existing = await this.findActiveOrThrow(id, tx);
-        if (existing.status === 'COMPLETED') {
-          throw new LockedError('This shipment is already Completed');
-        }
-        if (existing.status === 'CANCELLED') {
-          throw new BusinessRuleError('A Cancelled shipment cannot be completed');
-        }
-
-        return tx.shipment.update({
-          where: { id },
-          data: { status: 'COMPLETED' },
-          include: SHIPMENT_WITH_NAMES_INCLUDE,
-        });
-      },
-    );
-
-    return toSharedShipment(completed);
-  }
-
   /**
-   * BR-50/OQ-11: records the one confirmed candidate for "actual flight
-   * departure" (Phase 8 report, explicit user decision). Immutable once
-   * set — a real-world fact, not something to silently overwrite — and
-   * resolves any open cut-off alert to PASSED in the same transaction
-   * (CutoffService#resolveForActualDeparture, ARCHITECTURE §2: modules talk
-   * through public service interfaces).
+   * The direct, no-approval status dropdown (Schedule grid) — replaces the
+   * old cancellation-request/approve and completion-approve workflows
+   * entirely. `shipment.status.update` (checked at the controller) grants
+   * the base 4 values; the 2 Payment values additionally require
+   * `shipment.status.payment`, checked here since it depends on the
+   * request body, not just the route. Optimistic-lock version check same
+   * as `update()`. Setting DEPARTED for the first time folds in what used
+   * to be the separate "record actual departure" action (BR-50/OQ-11):
+   * immutable once set, resolves any open cut-off alert to PASSED in the
+   * same transaction.
    */
-  async recordActualDeparture(id: string, actor: RequestUser): Promise<Shipment> {
+  async changeStatus(
+    id: string,
+    input: ChangeShipmentStatusRequest,
+    actor: RequestUser,
+  ): Promise<Shipment> {
+    if (PAYMENT_STATUSES.includes(input.status)) {
+      const allowed = await this.permissionsService.hasPermission(
+        actor.id,
+        'shipment.status.payment',
+      );
+      if (!allowed) {
+        throw new ForbiddenError(`Missing permission: shipment.status.payment`);
+      }
+    }
+
     const updated = await this.auditService.auditedTransaction(
       this.prisma,
       { userId: actor.id, ipAddress: null, userAgent: null },
       async (tx) => {
-        const existing = await this.findActiveOrThrow(id, tx);
-        if (existing.actualDepartureAt !== null) {
-          throw new LockedError('Actual departure has already been recorded for this shipment.');
+        const existing = await tx.shipment.findFirst({ where: { id, isDeleted: false } });
+        if (!existing) throw new NotFoundError('Shipment not found');
+
+        let actualDepartureAt: Date | undefined;
+        if (input.status === 'DEPARTED' && existing.actualDepartureAt === null) {
+          if (!input.actualDepartureAt) {
+            throw new ValidationError(
+              'Actual departure date/time is required when setting status to Departed',
+            );
+          }
+          actualDepartureAt = parseColomboDateTime(input.actualDepartureAt);
+          await this.cutoffService.resolveForActualDeparture(tx, id, actualDepartureAt);
         }
 
-        const now = new Date();
-        await this.cutoffService.resolveForActualDeparture(tx, id, now);
+        const result = await tx.shipment.updateMany({
+          where: { id, version: input.version },
+          data: {
+            status: input.status,
+            ...(actualDepartureAt ? { actualDepartureAt } : {}),
+            version: { increment: 1 },
+          },
+        });
+        if (result.count === 0) {
+          throw new ConflictError(OPTIMISTIC_LOCK_CONFLICT_MESSAGE);
+        }
 
-        return tx.shipment.update({
+        return tx.shipment.findUniqueOrThrow({
           where: { id },
-          data: { actualDepartureAt: now },
           include: SHIPMENT_WITH_NAMES_INCLUDE,
         });
       },

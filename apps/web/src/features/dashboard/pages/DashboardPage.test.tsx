@@ -16,6 +16,7 @@ const shipment: Shipment = {
   mawbNo: '176 2853 0191',
   houseAwbNo: null,
   airlineId: 'airline-1',
+  airlineCode: 'EK',
   airlineName: 'Emirates',
   flightNo: 'EK654',
   destinationAirportId: 'airport-1',
@@ -29,6 +30,7 @@ const shipment: Shipment = {
   flightDate: '2026-06-15',
   handlingDate: null,
   depTime: '03:05',
+  cutoffTime: '22:05',
   cusdecNo: null,
   boxCount: 10,
   weightKg: '444.500',
@@ -82,13 +84,10 @@ function setUser(permissions: string[]) {
   });
 }
 
-function stubFetch(options: { cancellationQueue?: unknown[] } = {}) {
+function stubFetch() {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string) => {
-      if (url.includes('/shipments/cancellation-requests')) {
-        return Promise.resolve(jsonResponse(200, options.cancellationQueue ?? []));
-      }
       if (url.includes('/shipments')) {
         return Promise.resolve(jsonResponse(200, shipmentListResponse));
       }
@@ -145,7 +144,7 @@ describe('DashboardPage', () => {
     expect(screen.queryByRole('button', { name: 'Copy MAWB' })).not.toBeInTheDocument();
   });
 
-  it('Executive: sees Add Shipment, but no Business Overview and no approval queue', async () => {
+  it('Executive: sees Add Shipment, but no Business Overview', async () => {
     setUser(['shipment.view', 'shipment.create']);
     stubFetch();
 
@@ -154,32 +153,9 @@ describe('DashboardPage', () => {
     await waitFor(() => expect(screen.getByText('HUB 000001')).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Add shipment' })).toBeInTheDocument();
     expect(screen.queryByText('Business Overview')).not.toBeInTheDocument();
-    expect(screen.queryByText('Pending cancellation requests')).not.toBeInTheDocument();
   });
 
-  it('Manager: sees Add Shipment, Business Overview, and the pending-approvals queue', async () => {
-    setUser([
-      'shipment.view',
-      'shipment.create',
-      'shipment.cancellation.approve',
-      'analytics.view',
-    ]);
-    stubFetch({
-      cancellationQueue: [{ id: 'req-1', shipmentNo: 'HUB 000002', reason: 'Wrong commodity' }],
-    });
-
-    renderDashboard();
-
-    await waitFor(() => expect(screen.getByText('HUB 000001')).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: 'Add shipment' })).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText('Business Overview')).toBeInTheDocument());
-    await waitFor(() =>
-      expect(screen.getByText('Pending cancellation requests')).toBeInTheDocument(),
-    );
-    expect(screen.getByText('HUB 000002')).toBeInTheDocument();
-  });
-
-  it('Director: sees Business Overview (BR-01: can also create shipments), but no approval queue', async () => {
+  it('Manager: sees Add Shipment and Business Overview', async () => {
     setUser(['shipment.view', 'shipment.create', 'analytics.view']);
     stubFetch();
 
@@ -188,16 +164,23 @@ describe('DashboardPage', () => {
     await waitFor(() => expect(screen.getByText('HUB 000001')).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Add shipment' })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('Business Overview')).toBeInTheDocument());
-    expect(screen.queryByText('Pending cancellation requests')).not.toBeInTheDocument();
+  });
+
+  it('Director: sees Business Overview (BR-01: can also create shipments)', async () => {
+    setUser(['shipment.view', 'shipment.create', 'analytics.view']);
+    stubFetch();
+
+    renderDashboard();
+
+    await waitFor(() => expect(screen.getByText('HUB 000001')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Add shipment' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Business Overview')).toBeInTheDocument());
   });
 
   it('links to the full Shipments page when there are more shipments than the preview shows', async () => {
-    stubFetch();
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) => {
-        if (url.includes('/shipments/cancellation-requests'))
-          return Promise.resolve(jsonResponse(200, []));
         if (url.includes('/shipments')) {
           return Promise.resolve(
             jsonResponse(200, {

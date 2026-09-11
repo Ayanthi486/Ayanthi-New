@@ -6,7 +6,7 @@ export interface ShipmentRow {
   mawbNo: string | null;
   houseAwbNo: string | null;
   airlineId: string;
-  airline: { name: string };
+  airline: { code: string; name: string };
   flightNo: string | null;
   destinationAirportId: string | null;
   destinationAirport: { code: string } | null;
@@ -15,7 +15,7 @@ export interface ShipmentRow {
   consigneeId: string;
   consignee: { name: string };
   commodityId: string;
-  commodity: { name: string };
+  commodity: { name: string; delayHours: Date };
   flightDate: Date;
   handlingDate: Date | null;
   depTime: Date;
@@ -34,10 +34,10 @@ export interface ShipmentRow {
 
 /** Shared by shipment/cargo services so a shipment read always resolves its master-data names the same way. */
 export const SHIPMENT_WITH_NAMES_INCLUDE = {
-  airline: { select: { name: true } },
+  airline: { select: { code: true, name: true } },
   shipper: { select: { name: true } },
   consignee: { select: { name: true } },
-  commodity: { select: { name: true } },
+  commodity: { select: { name: true, delayHours: true } },
   destinationAirport: { select: { code: true } },
 } as const;
 
@@ -69,12 +69,41 @@ export function parseTime24(value: string): Date {
   return new Date(`1970-01-01T${value}:00.000Z`);
 }
 
+/**
+ * Parses a `datetime-local`-shaped wire value (`YYYY-MM-DDTHH:mm`, no
+ * timezone) as Asia/Colombo wall-clock time into the true UTC instant it
+ * represents — same convention/offset as `cutoff.util.ts`'s
+ * `combineFlightDateAndDepTime`, used here for the actual-departure
+ * timestamp captured when a shipment's status changes to Departed.
+ */
+export function parseColomboDateTime(value: string): Date {
+  const colomboWallClockAsUtc = new Date(`${value}:00.000Z`);
+  return new Date(colomboWallClockAsUtc.getTime() - COLOMBO_OFFSET_MS);
+}
+
 function formatDateOnly(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-function formatTime24(date: Date): string {
+export function formatTime24(date: Date): string {
   return date.toISOString().slice(11, 16);
+}
+
+/**
+ * Cut-off Time = the shipment's Dep Time minus its Commodity's Delay Hours
+ * (e.g. Dep Time 20:00 - Delay Hours 05:00 = Cut-off Time 15:00) — a plain
+ * HH:mm wall-clock value, wrapping across midnight like a clock rather than
+ * carrying a date component (02:00 - 05:00 = 21:00).
+ */
+export function computeCutoffTime(depTime: Date, delayHours: Date): string {
+  const depMinutes = depTime.getUTCHours() * 60 + depTime.getUTCMinutes();
+  const delayMinutes = delayHours.getUTCHours() * 60 + delayHours.getUTCMinutes();
+  const cutoffMinutes = (((depMinutes - delayMinutes) % 1440) + 1440) % 1440;
+  const hours = Math.floor(cutoffMinutes / 60)
+    .toString()
+    .padStart(2, '0');
+  const minutes = (cutoffMinutes % 60).toString().padStart(2, '0');
+  return `${hours}:${minutes}`;
 }
 
 export function toSharedShipment(row: ShipmentRow): SharedShipment {
@@ -84,6 +113,7 @@ export function toSharedShipment(row: ShipmentRow): SharedShipment {
     mawbNo: row.mawbNo,
     houseAwbNo: row.houseAwbNo,
     airlineId: row.airlineId,
+    airlineCode: row.airline.code,
     airlineName: row.airline.name,
     flightNo: row.flightNo,
     destinationAirportId: row.destinationAirportId,
@@ -97,6 +127,7 @@ export function toSharedShipment(row: ShipmentRow): SharedShipment {
     flightDate: formatDateOnly(row.flightDate),
     handlingDate: row.handlingDate ? formatDateOnly(row.handlingDate) : null,
     depTime: formatTime24(row.depTime),
+    cutoffTime: computeCutoffTime(row.depTime, row.commodity.delayHours),
     cusdecNo: row.cusdecNo,
     boxCount: row.boxCount,
     weightKg: row.weightKg ? row.weightKg.toString() : null,

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addDays,
   colomboToday,
+  computeCutoffTime,
   parseDateOnly,
   parseTime24,
   toSharedShipment,
@@ -17,6 +18,20 @@ describe('shipment.util', () => {
     it('addDays advances the calendar date, including across a month boundary', () => {
       expect(addDays('2026-01-31', 1)).toBe('2026-02-01');
       expect(addDays('2026-03-01', -1)).toBe('2026-02-28');
+    });
+  });
+
+  describe('computeCutoffTime', () => {
+    it('subtracts Delay Hours from Dep Time (e.g. 20:00 - 05:00 = 15:00)', () => {
+      const depTime = new Date('1970-01-01T20:00:00.000Z');
+      const delayHours = new Date('1970-01-01T05:00:00.000Z');
+      expect(computeCutoffTime(depTime, delayHours)).toBe('15:00');
+    });
+
+    it('wraps across midnight like a clock, rather than going negative', () => {
+      const depTime = new Date('1970-01-01T02:00:00.000Z');
+      const delayHours = new Date('1970-01-01T05:00:00.000Z');
+      expect(computeCutoffTime(depTime, delayHours)).toBe('21:00');
     });
   });
 
@@ -39,7 +54,7 @@ describe('shipment.util', () => {
       mawbNo: '176 2853 0191',
       houseAwbNo: 'HL 0106',
       airlineId: 'airline-1',
-      airline: { name: 'Emirates' },
+      airline: { code: 'EK', name: 'Emirates' },
       flightNo: 'EK654',
       destinationAirportId: 'airport-1',
       destinationAirport: { code: 'DXB' },
@@ -48,7 +63,7 @@ describe('shipment.util', () => {
       consigneeId: 'consignee-1',
       consignee: { name: 'Acme Imports' },
       commodityId: 'commodity-1',
-      commodity: { name: 'Edible Fish' },
+      commodity: { name: 'Edible Fish', delayHours: new Date('1970-01-01T05:00:00.000Z') },
       flightDate: new Date('2026-06-15T00:00:00.000Z'),
       handlingDate: new Date('2026-06-14T00:00:00.000Z'),
       depTime: new Date('1970-01-01T03:05:00.000Z'),
@@ -70,12 +85,15 @@ describe('shipment.util', () => {
       expect(shared.flightDate).toBe('2026-06-15');
       expect(shared.handlingDate).toBe('2026-06-14');
       expect(shared.depTime).toBe('03:05');
+      // Dep Time 03:05 - Commodity Delay Hours 05:00, wrapping past midnight.
+      expect(shared.cutoffTime).toBe('22:05');
       expect(shared.weightKg).toBe('444.500');
       expect(shared.appliedBuyingRate).toBe('4.7500');
     });
 
     it('denormalizes master-data names from the included relations', () => {
       const shared = toSharedShipment(baseRow);
+      expect(shared.airlineCode).toBe('EK');
       expect(shared.airlineName).toBe('Emirates');
       expect(shared.shipperName).toBe('Acme Exports');
       expect(shared.consigneeName).toBe('Acme Imports');

@@ -4,6 +4,7 @@ import type {
   CreateAirportRequest,
   CreateCommodityRequest,
   CreateConsigneeRequest,
+  CreateFlightRequest,
   CreateShipperRequest,
 } from '@hub-lanka/shared';
 import {
@@ -11,16 +12,19 @@ import {
   createAirport,
   createCommodity,
   createConsignee,
+  createFlight,
   createShipper,
   deactivateAirline,
   deactivateAirport,
   deactivateCommodity,
   deactivateConsignee,
+  deactivateFlight,
   deactivateShipper,
   listAirlines,
   listAirports,
   listCommodities,
   listConsignees,
+  listFlights,
   listShippers,
 } from '@/features/masterdata/api/masterdataApi';
 
@@ -30,6 +34,7 @@ const KEYS = {
   airlines: ['masterdata', 'airlines'],
   airports: ['masterdata', 'airports'],
   commodities: ['masterdata', 'commodities'],
+  flights: ['masterdata', 'flights'],
 } as const;
 
 export function useShippers() {
@@ -119,5 +124,23 @@ export function useDeactivateCommodity() {
   return useMutation({
     mutationFn: (id: string) => deactivateCommodity(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: KEYS.commodities }),
+  });
+}
+
+export function useFlights() {
+  return useQuery({ queryKey: KEYS.flights, queryFn: listFlights });
+}
+export function useCreateFlight() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateFlightRequest) => createFlight(input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: KEYS.flights }),
+  });
+}
+export function useDeactivateFlight() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deactivateFlight(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: KEYS.flights }),
   });
 }

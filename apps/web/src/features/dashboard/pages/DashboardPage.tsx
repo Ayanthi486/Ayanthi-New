@@ -2,7 +2,6 @@ import { RequirePermission } from '@/app/RequirePermission';
 import { BusinessOverviewCard } from '@/features/dashboard/components/BusinessOverviewCard';
 import { DashboardShipmentPreview } from '@/features/dashboard/components/DashboardShipmentPreview';
 import { AddShipmentAction } from '@/features/shipments/components/AddShipmentAction';
-import { CancellationApprovalQueue } from '@/features/shipments/components/CancellationApprovalQueue';
 import { KpiRow } from '@/features/shipments/components/KpiRow';
 import { useShipments } from '@/features/shipments/hooks/useShipments';
 
@@ -19,14 +18,12 @@ const PREVIEW_ROW_LIMIT = 8;
  * Role differences come entirely from the existing permission system, not
  * hardcoded role checks (seed.ts's actual grants, not an assumption):
  * - Executive (`shipment.view`, `shipment.create`): operational overview +
- *   quick Add Shipment. No Business Overview (no `analytics.view`), no
- *   approval queue (no `shipment.cancellation.approve`).
- * - Manager (also holds `shipment.cancellation.approve`, `analytics.view`):
- *   the same overview, plus pending cancellation approvals and the
+ *   quick Add Shipment. No Business Overview (no `analytics.view`).
+ * - Manager (also holds `analytics.view`): the same overview, plus the
  *   Business Overview tile.
  * - Director (`shipment.create` too — BR-01: all three roles can create
- *   shipments — plus `analytics.view`, but not `shipment.cancellation.approve`):
- *   overview + Add Shipment + Business Overview, no approval queue.
+ *   shipments — plus `analytics.view`): overview + Add Shipment + Business
+ *   Overview.
  *
  * Not included: a Cost Sheet/Invoice/Payment "items requiring attention"
  * widget. Those modules only expose per-shipment endpoints
@@ -61,10 +58,6 @@ export function DashboardPage() {
         isLoading={shipmentsQuery.isLoading}
         totalCount={shipmentsQuery.data?.meta.total ?? 0}
       />
-
-      <RequirePermission permission="shipment.cancellation.approve">
-        <CancellationApprovalQueue />
-      </RequirePermission>
     </div>
   );
 }

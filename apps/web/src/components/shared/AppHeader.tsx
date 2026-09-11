@@ -55,7 +55,7 @@ export function AppHeader() {
   };
 
   return (
-    <header className="bg-background border-b-nav-border sticky top-0 z-40 border-b shadow-sm">
+    <header className="bg-background border-b-nav-border sticky top-0 z-40 border-b shadow-sm print:hidden">
       <div className="flex h-[72px] w-full items-center gap-4 px-6">
         <Link
           to="/"

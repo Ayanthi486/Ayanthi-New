@@ -4,6 +4,7 @@ import { AuditService } from '../audit/audit.service';
 import { NotFoundError } from '../common/errors/app-error';
 import type { RequestUser } from '../identity/types';
 import { PrismaService } from '../prisma/prisma.service';
+import { parseTime24 } from '../shipment/shipment.util';
 import { toCommodity } from './masterdata.util';
 
 /** BR-17: Executive and Manager may both create commodities (masterdata.commodity.create); deactivation is masterdata.manage (Manager only) — see the controller. */
@@ -26,7 +27,15 @@ export class CommoditiesService {
     const created = await this.auditService.auditedTransaction(
       this.prisma,
       { userId: actor.id, ipAddress: null, userAgent: null },
-      (tx) => tx.commodity.create({ data: { name: input.name, createdByUserId: actor.id } }),
+      (tx) =>
+        tx.commodity.create({
+          data: {
+            name: input.name,
+            code: input.code,
+            delayHours: parseTime24(input.delayHours),
+            createdByUserId: actor.id,
+          },
+        }),
     );
     return toCommodity(created);
   }

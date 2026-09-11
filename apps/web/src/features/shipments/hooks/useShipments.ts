@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  ChangeShipmentStatusRequest,
   CreateShipmentRequest,
   SetCargoRequest,
   ShipmentListQuery,
@@ -8,21 +9,16 @@ import type {
 import { ACTIVE_CUTOFF_ALERTS_KEY } from '@/features/cutoff/hooks/useCutoff';
 import {
   captureBuyingRate,
-  completeShipment,
+  changeShipmentStatus,
   createShipment,
   deleteShipment,
   getShipment,
-  listCancellationQueue,
   listShipments,
-  recordActualDeparture,
-  requestCancellation,
-  reviewCancellation,
   setCargo,
   updateShipment,
 } from '@/features/shipments/api/shipmentsApi';
 
 const SHIPMENTS_KEY = ['shipments'];
-const CANCELLATION_QUEUE_KEY = ['shipments', 'cancellation-requests'];
 
 // Schedule freshness via polling, not WebSockets (ARCHITECTURE §3).
 const SCHEDULE_POLL_MS = 25_000;
@@ -68,42 +64,20 @@ export function useDeleteShipment() {
   });
 }
 
-export function useRequestCancellation() {
+/**
+ * The direct, no-approval status dropdown (Schedule grid). Invalidates
+ * cutoff alerts too — same as the old useRecordActualDeparture used to —
+ * since setting DEPARTED resolves any open alert to Passed.
+ */
+export function useChangeShipmentStatus() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) => requestCancellation(id, reason),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: SHIPMENTS_KEY }),
-  });
-}
-
-export function useCancellationQueue() {
-  return useQuery({ queryKey: CANCELLATION_QUEUE_KEY, queryFn: listCancellationQueue });
-}
-
-export function useReviewCancellation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({
-      requestId,
-      decision,
-      note,
-    }: {
-      requestId: string;
-      decision: 'approve' | 'reject';
-      note?: string;
-    }) => reviewCancellation(requestId, decision, note),
+    mutationFn: ({ id, input }: { id: string; input: ChangeShipmentStatusRequest }) =>
+      changeShipmentStatus(id, input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: CANCELLATION_QUEUE_KEY });
       void queryClient.invalidateQueries({ queryKey: SHIPMENTS_KEY });
+      void queryClient.invalidateQueries({ queryKey: ACTIVE_CUTOFF_ALERTS_KEY });
     },
-  });
-}
-
-export function useCompleteShipment() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => completeShipment(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: SHIPMENTS_KEY }),
   });
 }
 
@@ -120,16 +94,5 @@ export function useCaptureBuyingRate() {
   return useMutation({
     mutationFn: (id: string) => captureBuyingRate(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: SHIPMENTS_KEY }),
-  });
-}
-
-export function useRecordActualDeparture() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => recordActualDeparture(id),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: SHIPMENTS_KEY });
-      void queryClient.invalidateQueries({ queryKey: ACTIVE_CUTOFF_ALERTS_KEY });
-    },
   });
 }

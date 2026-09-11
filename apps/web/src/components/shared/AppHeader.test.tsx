@@ -42,6 +42,7 @@ const ALL_PERMISSIONS = [
   'shipment.view',
   'masterdata.manage',
   'masterdata.commodity.create',
+  'masterdata.shipper.create',
   'rate.table.manage',
   'analytics.view',
   'identity.user.manage',

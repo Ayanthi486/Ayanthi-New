@@ -6,7 +6,7 @@ import {
   type Shipment,
   type UpdateShipmentRequest,
 } from '@hub-lanka/shared';
-import { forwardRef, type ReactNode, type SelectHTMLAttributes } from 'react';
+import { forwardRef, useState, type ReactNode, type SelectHTMLAttributes } from 'react';
 import { useForm, type Resolver } from 'react-hook-form';
 import { MasterDataCombobox } from '@/components/shared/MasterDataCombobox';
 import { Button } from '@/components/ui/button';
@@ -17,15 +17,17 @@ import {
   useAirports,
   useCommodities,
   useConsignees,
-  useCreateAirline,
   useCreateAirport,
   useCreateCommodity,
   useCreateConsignee,
+  useCreateFlight,
   useCreateShipper,
+  useFlights,
   useShippers,
 } from '@/features/masterdata/hooks/useMasterdata';
 import { ApiClientError } from '@/lib/apiClient';
 import { useAuthStore } from '@/lib/authStore';
+import { formatFlightNumber, splitFlightNumber } from '@/lib/utils';
 
 type FormValues = CreateShipmentRequest & { version?: number };
 
@@ -42,26 +44,40 @@ function mutationErrorMessage(mutation: { isError: boolean; error: unknown }): s
   return mutation.error instanceof ApiClientError ? mutation.error.message : 'Unable to create.';
 }
 
+/** MAWB No is 11 digits, conventionally grouped and displayed as 3-4-4 (e.g. "123 4567 8912"). */
+function formatMawbNo(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 11);
+  return [digits.slice(0, 3), digits.slice(3, 7), digits.slice(7, 11)].filter(Boolean).join(' ');
+}
+
 /**
  * Add/Edit Shipment form (PRD §5.2). Two distinct layouts sharing one
  * `useForm`/schema pair:
  *
- * - Create: exactly the 8 fields required to put a shipment on the Daily
- *   Schedule (DEP TIME, MAWB NO, DEST, FLIGHT, DATE, SHIPPER, CONSIGNEE,
- *   COMMODITY) — every one of them mandatory. Shipment ID and Cut-off are
- *   system-generated/computed and never shown here. House AWB, Handling
+ * - Create: MAWB NO, DEST, FLIGHT (Airline + Flight No), DATE, SHIPPER,
+ *   CONSIGNEE, COMMODITY — every one of them mandatory. DEP TIME on the
+ *   Shipment itself is still required (schema/DB unchanged), but it has no
+ *   field of its own here — Flight.depTime is required at Flight creation
+ *   (both here and in Master Data), so selecting/creating a Flight always
+ *   fills the shipment's depTime automatically. Shipment ID and Cut-off
+ *   are system-generated/computed and never shown here. House AWB, Handling
  *   Date, CUSDEC No, BOX and WEIGHT are deliberately deferred to Edit /
  *   Cargo Handling ("later workflow", not initial creation) — still
  *   optional in the schema, still fully editable there.
  * - Edit: the full field set, unchanged — House AWB/Handling Date/CUSDEC No
  *   remain editable there, which is the "appropriate later workflow" for
- *   them, not a separate screen.
+ *   them, not a separate screen. DEP TIME also remains a directly editable
+ *   field here, since an edit may need to correct a specific shipment's
+ *   time without touching the reusable Flight record.
  *
- * Shipper, Consignee, Airline, Airport (Destination) and Commodity are all
- * searchable `MasterDataCombobox` fields on create (UX spec §2/§8) — one
- * reusable component, configured per entity, each wired to its already-
- * existing masterdata list + create endpoint/permission rather than
- * inventing new backend surface (Phase 3).
+ * Shipper, Consignee, Airline, Flight, Airport (Destination) and Commodity
+ * are all searchable `MasterDataCombobox` fields on create (UX spec §2/§8)
+ * — one reusable component, configured per entity, each wired to its
+ * already-existing masterdata list + create endpoint/permission rather than
+ * inventing new backend surface (Phase 3). Flight No is stored on the
+ * shipment as its own plain string (matching the Edit layout and the
+ * `flightNo` schema field) — selecting/creating a Flight just fills in
+ * `flightNo` and `depTime` together; there is no `flightId` on Shipment.
  */
 export function ShipmentForm({
   shipment,
@@ -77,13 +93,34 @@ export function ShipmentForm({
   const airlinesQuery = useAirlines();
   const airportsQuery = useAirports();
   const commoditiesQuery = useCommodities();
+  const flightsQuery = useFlights();
 
   const createShipperMutation = useCreateShipper();
   const createConsigneeMutation = useCreateConsignee();
-  const createAirlineMutation = useCreateAirline();
   const createAirportMutation = useCreateAirport();
   const createCommodityMutation = useCreateCommodity();
+  const createFlightMutation = useCreateFlight();
   const hasPermission = useAuthStore((state) => state.hasPermission);
+
+  // BR: shipments can't be created for a date that's already passed — the
+  // date picker floors at today in Asia/Colombo (BR-15's same fixed,
+  // no-DST UTC+5:30 offset), matching the createShipmentRequestSchema
+  // check that actually enforces this on submit, regardless of the
+  // browser's own timezone.
+  const todayDateString = (() => {
+    const COLOMBO_OFFSET_MS = (5 * 60 + 30) * 60_000;
+    return new Date(Date.now() + COLOMBO_OFFSET_MS).toISOString().slice(0, 10);
+  })();
+
+  // Flight is selected by its own id (for combobox highlighting/display),
+  // but the shipment stores `flightNo`/`depTime` directly — there's no
+  // `flightId` column on Shipment, so this id is tracked here, not in the
+  // form's own values.
+  const [selectedFlightId, setSelectedFlightId] = useState('');
+  // Set when "Add New Flight" is submitted with a code that doesn't match
+  // any existing Airline — surfaced next to the dialog's own fields, since
+  // there's no dedicated Airline field on this form to attach the error to.
+  const [flightCreateError, setFlightCreateError] = useState<string>();
 
   const {
     register,
@@ -134,6 +171,10 @@ export function ShipmentForm({
         },
   });
 
+  // Bound once and reused by both layouts' MAWB No field so the
+  // digits-only-with-spaces formatting (below) lives in one place.
+  const mawbNoField = register('mawbNo');
+
   const submit = handleSubmit((values) => {
     onSubmit(values);
   });
@@ -149,7 +190,7 @@ export function ShipmentForm({
               <option value="">Select an airline…</option>
               {airlinesQuery.data?.map((airline) => (
                 <option key={airline.id} value={airline.id}>
-                  {airline.name}
+                  {airline.code} — {airline.name}
                 </option>
               ))}
             </Select>
@@ -158,7 +199,17 @@ export function ShipmentForm({
             <Input id="flightNo" {...register('flightNo')} />
           </Field>
           <Field id="mawbNo" label="MAWB No" error={errors.mawbNo?.message}>
-            <Input id="mawbNo" {...register('mawbNo')} />
+            <Input
+              id="mawbNo"
+              {...mawbNoField}
+              inputMode="numeric"
+              maxLength={13}
+              placeholder="123 4567 8912"
+              onChange={(e) => {
+                e.target.value = formatMawbNo(e.target.value);
+                void mawbNoField.onChange(e);
+              }}
+            />
           </Field>
           <Field id="houseAwbNo" label="House AWB" error={errors.houseAwbNo?.message}>
             <Input id="houseAwbNo" {...register('houseAwbNo')} />
@@ -224,11 +275,18 @@ export function ShipmentForm({
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field id="depTime" label="DEP TIME" required error={errors.depTime?.message}>
-            <Input id="depTime" type="time" {...register('depTime')} />
-          </Field>
           <Field id="mawbNo" label="MAWB NO" required error={errors.mawbNo?.message}>
-            <Input id="mawbNo" {...register('mawbNo')} />
+            <Input
+              id="mawbNo"
+              {...mawbNoField}
+              inputMode="numeric"
+              maxLength={13}
+              placeholder="123 4567 8912"
+              onChange={(e) => {
+                e.target.value = formatMawbNo(e.target.value);
+                void mawbNoField.onChange(e);
+              }}
+            />
           </Field>
 
           <Field
@@ -254,11 +312,20 @@ export function ShipmentForm({
                 setValue('destinationAirportId', id, { shouldValidate: true, shouldDirty: true })
               }
               ariaInvalid={Boolean(errors.destinationAirportId)}
-              canCreate={hasPermission('masterdata.manage')}
+              // Broader than masterdata.manage — Executive and Manager may
+              // both add destinations (mirrors BR-17's commodity exception).
+              canCreate={hasPermission('masterdata.airport.create')}
               isCreating={createAirportMutation.isPending}
               createError={mutationErrorMessage(createAirportMutation)}
               createFields={[
-                { key: 'code', label: 'Code', required: true, placeholder: 'DXB' },
+                {
+                  key: 'code',
+                  label: 'Code',
+                  required: true,
+                  placeholder: 'DXB',
+                  maxLength: 3,
+                  transform: (value) => value.replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase(),
+                },
                 { key: 'name', label: 'Name', required: true, placeholder: 'Dubai' },
               ]}
               onCreate={async (input) => {
@@ -275,62 +342,98 @@ export function ShipmentForm({
             />
           </Field>
 
-          {/* Airline isn't one of the eight named fields, but it's a required FK
-              (createShipmentRequestSchema) with no separate slot in this
-              layout — grouped under FLIGHT, next to the flight number, since
-              that's how a flight is actually identified operationally. */}
-          <fieldset className="m-0 flex flex-col gap-1.5 border-0 p-0">
-            <legend className="mb-0.5 text-sm leading-none font-medium">
-              FLIGHT <RequiredMark />
-            </legend>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="airlineId" className="text-muted-foreground text-xs font-normal">
-                  Airline
-                </Label>
-                <MasterDataCombobox
-                  inputId="airlineId"
-                  entityLabel="Airline"
-                  placeholder="Search or type airline…"
-                  options={
-                    airlinesQuery.data?.map((airline) => ({
-                      id: airline.id,
-                      name: airline.name,
-                    })) ?? []
-                  }
-                  isLoading={airlinesQuery.isLoading}
-                  value={watch('airlineId') ?? ''}
-                  onChange={(id) =>
-                    setValue('airlineId', id, { shouldValidate: true, shouldDirty: true })
-                  }
-                  ariaInvalid={Boolean(errors.airlineId)}
-                  canCreate={hasPermission('masterdata.manage')}
-                  isCreating={createAirlineMutation.isPending}
-                  createError={mutationErrorMessage(createAirlineMutation)}
-                  onCreate={async (input) => {
-                    const created = await createAirlineMutation.mutateAsync({
-                      name: input.name ?? '',
-                    });
-                    return { id: created.id, name: created.name };
-                  }}
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="flightNo" className="text-muted-foreground text-xs font-normal">
-                  Flight No
-                </Label>
-                <Input id="flightNo" {...register('flightNo')} />
-              </div>
-            </div>
-            {(errors.airlineId?.message ?? errors.flightNo?.message) && (
-              <p className="text-destructive text-xs">
-                {errors.airlineId?.message ?? errors.flightNo?.message}
-              </p>
-            )}
-          </fieldset>
+          {/* Airline isn't one of the eight named fields, but it's a required
+              FK (createShipmentRequestSchema) with no separate slot in this
+              layout — captured together with the flight number as a single
+              "EK 0654"-style FLIGHT field, since that's how a flight is
+              actually identified operationally. Selecting/creating a Flight
+              still fills in airlineId, flightNo and depTime together. */}
+          <Field
+            id="flight"
+            label="FLIGHT"
+            required
+            error={errors.airlineId?.message ?? errors.flightNo?.message}
+          >
+            <MasterDataCombobox
+              inputId="flight"
+              entityLabel="Flight"
+              placeholder="e.g. EK 0654"
+              inputTransform={formatFlightNumber}
+              options={
+                flightsQuery.data?.map((flight) => {
+                  const airline = airlinesQuery.data?.find((a) => a.id === flight.airlineId);
+                  return {
+                    id: flight.id,
+                    name: airline ? `${airline.code} ${flight.flightNo}` : flight.flightNo,
+                  };
+                }) ?? []
+              }
+              isLoading={flightsQuery.isLoading || airlinesQuery.isLoading}
+              value={selectedFlightId}
+              onChange={(id) => {
+                setSelectedFlightId(id);
+                if (id === '') {
+                  setValue('airlineId', '', { shouldValidate: true, shouldDirty: true });
+                  setValue('flightNo', '', { shouldValidate: true, shouldDirty: true });
+                  setValue('depTime', '', { shouldValidate: true, shouldDirty: true });
+                  return;
+                }
+                // MasterDataCombobox also calls this itself right after a
+                // successful create (auto-selecting the new record) —
+                // `flightsQuery.data` hasn't refetched by then, so the
+                // lookup below misses. That's fine: `onCreate` (below)
+                // already set airlineId/flightNo/depTime from the create
+                // response, so there's nothing to overwrite them with.
+                const flight = flightsQuery.data?.find((f) => f.id === id);
+                if (!flight) return;
+                setValue('airlineId', flight.airlineId, { shouldValidate: true, shouldDirty: true });
+                setValue('flightNo', flight.flightNo, { shouldValidate: true, shouldDirty: true });
+                setValue('depTime', flight.depTime, { shouldValidate: true, shouldDirty: true });
+              }}
+              ariaInvalid={Boolean(errors.airlineId ?? errors.flightNo)}
+              // Broader than masterdata.manage — Executive and Manager may
+              // both add flights.
+              canCreate={hasPermission('masterdata.flight.create')}
+              isCreating={createFlightMutation.isPending}
+              createError={mutationErrorMessage(createFlightMutation) ?? flightCreateError}
+              createFields={[
+                // key 'name' (not 'flightNo') deliberately — it's what plugs
+                // this field into the dialog's existing
+                // prefill-from-search-query and duplicate-detection behaviour.
+                {
+                  key: 'name',
+                  label: 'Flight Number',
+                  required: true,
+                  placeholder: 'EK 0654',
+                  transform: formatFlightNumber,
+                },
+                { key: 'depTime', label: 'Departure Time', required: true, type: 'time' },
+              ]}
+              onCreate={async (input) => {
+                setFlightCreateError(undefined);
+                const { code, flightNo } = splitFlightNumber(input.name ?? '');
+                const airline = airlinesQuery.data?.find((a) => a.code === code);
+                if (!airline) {
+                  setFlightCreateError(
+                    `No airline found with code "${code}". Add it in Master Data first.`,
+                  );
+                  throw new Error('Unknown airline code');
+                }
+                const created = await createFlightMutation.mutateAsync({
+                  airlineId: airline.id,
+                  flightNo,
+                  depTime: input.depTime ?? '',
+                });
+                setValue('airlineId', airline.id, { shouldValidate: true, shouldDirty: true });
+                setValue('flightNo', created.flightNo, { shouldValidate: true, shouldDirty: true });
+                setValue('depTime', created.depTime, { shouldValidate: true, shouldDirty: true });
+                return { id: created.id, name: `${airline.code} ${created.flightNo}` };
+              }}
+            />
+          </Field>
 
           <Field id="flightDate" label="DATE" required error={errors.flightDate?.message}>
-            <Input id="flightDate" type="date" {...register('flightDate')} />
+            <Input id="flightDate" type="date" min={todayDateString} {...register('flightDate')} />
           </Field>
           <Field id="shipperId" label="SHIPPER" required error={errors.shipperId?.message}>
             <MasterDataCombobox
@@ -346,11 +449,22 @@ export function ShipmentForm({
                 setValue('shipperId', id, { shouldValidate: true, shouldDirty: true })
               }
               ariaInvalid={Boolean(errors.shipperId)}
-              canCreate={hasPermission('masterdata.manage')}
+              // Broader than masterdata.manage — Executive and Manager may
+              // both add shippers.
+              canCreate={hasPermission('masterdata.shipper.create')}
               isCreating={createShipperMutation.isPending}
               createError={mutationErrorMessage(createShipperMutation)}
+              createFields={[
+                { key: 'name', label: 'Shipper Name', required: true },
+                { key: 'address', label: 'Shipper Address', type: 'textarea', rows: 3 },
+                { key: 'contact', label: 'Contact' },
+              ]}
               onCreate={async (input) => {
-                const created = await createShipperMutation.mutateAsync({ name: input.name ?? '' });
+                const created = await createShipperMutation.mutateAsync({
+                  name: input.name ?? '',
+                  address: input.address || undefined,
+                  contact: input.contact || undefined,
+                });
                 return { id: created.id, name: created.name };
               }}
             />
@@ -373,12 +487,21 @@ export function ShipmentForm({
                 setValue('consigneeId', id, { shouldValidate: true, shouldDirty: true })
               }
               ariaInvalid={Boolean(errors.consigneeId)}
-              canCreate={hasPermission('masterdata.manage')}
+              // Broader than masterdata.manage — Executive and Manager may
+              // both add consignees.
+              canCreate={hasPermission('masterdata.consignee.create')}
               isCreating={createConsigneeMutation.isPending}
               createError={mutationErrorMessage(createConsigneeMutation)}
+              createFields={[
+                { key: 'name', label: 'Consignee Name', required: true },
+                { key: 'address', label: 'Consignee Address', type: 'textarea', rows: 3 },
+                { key: 'contact', label: 'Contact' },
+              ]}
               onCreate={async (input) => {
                 const created = await createConsigneeMutation.mutateAsync({
                   name: input.name ?? '',
+                  address: input.address || undefined,
+                  contact: input.contact || undefined,
                 });
                 return { id: created.id, name: created.name };
               }}
@@ -406,9 +529,23 @@ export function ShipmentForm({
               canCreate={hasPermission('masterdata.commodity.create')}
               isCreating={createCommodityMutation.isPending}
               createError={mutationErrorMessage(createCommodityMutation)}
+              createFields={[
+                { key: 'name', label: 'Commodity Name', required: true },
+                {
+                  key: 'code',
+                  label: 'Commodity Code',
+                  required: true,
+                  placeholder: 'e.g. 123456',
+                  maxLength: 6,
+                  transform: (value) => value.replace(/\D/g, '').slice(0, 6),
+                },
+                { key: 'delayHours', label: 'Delay Hours', required: true, type: 'time' },
+              ]}
               onCreate={async (input) => {
                 const created = await createCommodityMutation.mutateAsync({
                   name: input.name ?? '',
+                  code: input.code ?? '',
+                  delayHours: input.delayHours ?? '',
                 });
                 return { id: created.id, name: created.name };
               }}

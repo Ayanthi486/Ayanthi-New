@@ -2,29 +2,30 @@ import { useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { Shipment, UpdateShipmentRequest } from '@hub-lanka/shared';
 import { RequirePermission } from '@/app/RequirePermission';
+import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { CostSheetSection } from '@/features/costsheet/components/CostSheetSection';
 import { DocumentsSection } from '@/features/documents/components/DocumentsSection';
 import { InvoiceSection } from '@/features/invoice/components/InvoiceSection';
 import { BuyingRateSection } from '@/features/shipments/components/BuyingRateSection';
-import { CancellationRequestModal } from '@/features/shipments/components/CancellationRequestModal';
 import { CargoSection } from '@/features/shipments/components/CargoSection';
 import { ConflictDialog } from '@/features/shipments/components/ConflictDialog';
 import { LockedBanner } from '@/features/shipments/components/LockedBanner';
 import { ShipmentForm } from '@/features/shipments/components/ShipmentForm';
 import {
-  useCompleteShipment,
   useDeleteShipment,
-  useRecordActualDeparture,
-  useRequestCancellation,
   useShipment,
   useUpdateShipment,
 } from '@/features/shipments/hooks/useShipments';
 import { ApiClientError } from '@/lib/apiClient';
 
+/** Once a shipment is past Pending/Confirmed, the general edit path locks (BR-10) — matches shipment.service.ts's ACTIVE_STATUSES. */
+const ACTIVE_STATUSES: Shipment['status'][] = ['PENDING', 'CONFIRMED'];
+/** Delete locks later than editing does — only once Departed or Payment Received (matches shipment.service.ts's DELETE_LOCKED_STATUSES). */
+const DELETE_LOCKED_STATUSES: Shipment['status'][] = ['DEPARTED', 'PAYMENT_RECEIVED'];
+
 const FIELDS: { label: string; key: keyof Shipment }[] = [
   { label: 'Shipment ID', key: 'shipmentNo' },
-  { label: 'Status', key: 'status' },
   { label: 'Airline', key: 'airlineName' },
   { label: 'Flight No', key: 'flightNo' },
   { label: 'MAWB No', key: 'mawbNo' },
@@ -48,15 +49,11 @@ export function ShipmentViewPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const isEditing = searchParams.get('edit') === '1';
 
-  const [isCancelling, setIsCancelling] = useState(false);
   const [showConflict, setShowConflict] = useState(false);
 
   const shipmentQuery = useShipment(id);
   const updateMutation = useUpdateShipment();
   const deleteMutation = useDeleteShipment();
-  const requestCancellationMutation = useRequestCancellation();
-  const completeMutation = useCompleteShipment();
-  const recordActualDepartureMutation = useRecordActualDeparture();
 
   const shipment = shipmentQuery.data;
 
@@ -64,7 +61,8 @@ export function ShipmentViewPage() {
     return <p className="text-muted-foreground text-sm">Loading…</p>;
   }
 
-  const isCompleted = shipment.status === 'COMPLETED';
+  const isEditLocked = !ACTIVE_STATUSES.includes(shipment.status);
+  const isDeleteLocked = DELETE_LOCKED_STATUSES.includes(shipment.status);
 
   const handleUpdate = (values: UpdateShipmentRequest) => {
     updateMutation.mutate(
@@ -83,7 +81,10 @@ export function ShipmentViewPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{shipment.shipmentNo}</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold">{shipment.shipmentNo}</h1>
+          <StatusBadge status={shipment.status} />
+        </div>
         <Button
           variant="outline"
           size="sm"
@@ -95,9 +96,9 @@ export function ShipmentViewPage() {
         </Button>
       </div>
 
-      {isCompleted && <LockedBanner />}
+      {isEditLocked && <LockedBanner status={shipment.status} />}
 
-      {isEditing && !isCompleted ? (
+      {isEditing && !isEditLocked ? (
         <div className="border-border bg-card rounded-lg border p-6">
           <ShipmentForm
             shipment={shipment}
@@ -157,7 +158,7 @@ export function ShipmentViewPage() {
 
       <div className="flex flex-wrap gap-2">
         <RequirePermission permission="shipment.update">
-          {!isCompleted && !isEditing && (
+          {!isEditLocked && !isEditing && (
             <Button variant="outline" onClick={() => setSearchParams({ edit: '1' })}>
               Edit
             </Button>
@@ -165,7 +166,7 @@ export function ShipmentViewPage() {
         </RequirePermission>
 
         <RequirePermission permission="shipment.delete.own">
-          {!isCompleted && (
+          {!isDeleteLocked && (
             <Button
               variant="destructive"
               disabled={deleteMutation.isPending}
@@ -181,38 +182,6 @@ export function ShipmentViewPage() {
             </Button>
           )}
         </RequirePermission>
-
-        <RequirePermission permission="shipment.cancellation.request">
-          {shipment.status === 'PENDING' && (
-            <Button variant="outline" onClick={() => setIsCancelling(true)}>
-              Request cancellation
-            </Button>
-          )}
-        </RequirePermission>
-
-        <RequirePermission permission="shipment.completion.approve">
-          {shipment.status === 'PENDING' && (
-            <Button
-              disabled={completeMutation.isPending}
-              onClick={() => completeMutation.mutate(shipment.id)}
-            >
-              Mark completed
-            </Button>
-          )}
-        </RequirePermission>
-
-        {/* BR-50/OQ-11: immutable once set (423 on a second attempt), so hidden rather than merely disabled. */}
-        <RequirePermission permission="shipment.actual_departure.record">
-          {shipment.status !== 'CANCELLED' && shipment.actualDepartureAt === null && (
-            <Button
-              variant="outline"
-              disabled={recordActualDepartureMutation.isPending}
-              onClick={() => recordActualDepartureMutation.mutate(shipment.id)}
-            >
-              Record actual departure
-            </Button>
-          )}
-        </RequirePermission>
       </div>
 
       {deleteMutation.isError && (
@@ -221,34 +190,6 @@ export function ShipmentViewPage() {
             ? deleteMutation.error.message
             : 'Unable to delete this shipment.'}
         </p>
-      )}
-
-      {recordActualDepartureMutation.isError && (
-        <p className="text-destructive text-sm">
-          {recordActualDepartureMutation.error instanceof ApiClientError
-            ? recordActualDepartureMutation.error.message
-            : 'Unable to record the actual departure.'}
-        </p>
-      )}
-
-      {isCancelling && (
-        <CancellationRequestModal
-          isSubmitting={requestCancellationMutation.isPending}
-          errorMessage={
-            requestCancellationMutation.isError
-              ? requestCancellationMutation.error instanceof ApiClientError
-                ? requestCancellationMutation.error.message
-                : 'Unable to submit the cancellation request.'
-              : undefined
-          }
-          onCancel={() => setIsCancelling(false)}
-          onSubmit={(reason) =>
-            requestCancellationMutation.mutate(
-              { id: shipment.id, reason },
-              { onSuccess: () => setIsCancelling(false) },
-            )
-          }
-        />
       )}
 
       {showConflict && (

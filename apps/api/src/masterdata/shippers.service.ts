@@ -26,7 +26,10 @@ export class ShippersService {
     const created = await this.auditService.auditedTransaction(
       this.prisma,
       { userId: actor.id, ipAddress: null, userAgent: null },
-      (tx) => tx.shipper.create({ data: { name: input.name, address: input.address ?? null } }),
+      (tx) =>
+        tx.shipper.create({
+          data: { name: input.name, address: input.address ?? null, contact: input.contact ?? null },
+        }),
     );
     return toShipper(created);
   }

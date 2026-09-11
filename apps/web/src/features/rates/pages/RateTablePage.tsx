@@ -69,7 +69,7 @@ export function RateTablePage() {
               <option value="">Select an airline…</option>
               {airlinesQuery.data?.map((airline) => (
                 <option key={airline.id} value={airline.id}>
-                  {airline.name}
+                  {airline.code} — {airline.name}
                 </option>
               ))}
             </select>

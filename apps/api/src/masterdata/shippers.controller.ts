@@ -18,8 +18,10 @@ export class ShippersController {
     return this.shippersService.list(includeInactive === 'true');
   }
 
+  // Broader than masterdata.manage — Executive and Manager may both add
+  // shippers (mirrors BR-17's commodity.create exception).
   @Post()
-  @RequirePermission('masterdata.manage')
+  @RequirePermission('masterdata.shipper.create')
   async create(@Body() dto: CreateShipperDto, @CurrentUser() actor: RequestUser): Promise<Shipper> {
     return this.shippersService.create(dto, actor);
   }

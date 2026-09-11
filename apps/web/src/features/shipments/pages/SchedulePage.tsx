@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import type { ShipmentListQuery } from '@hub-lanka/shared';
-import { RequirePermission } from '@/app/RequirePermission';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AddShipmentAction } from '@/features/shipments/components/AddShipmentAction';
-import { CancellationApprovalQueue } from '@/features/shipments/components/CancellationApprovalQueue';
 import { KpiRow } from '@/features/shipments/components/KpiRow';
 import { ScheduleGrid } from '@/features/shipments/components/ScheduleGrid';
 import { useShipments } from '@/features/shipments/hooks/useShipments';
@@ -30,12 +29,21 @@ export function SchedulePage() {
             Defaults to today and tomorrow, sorted by departure time.
           </p>
         </div>
-        <AddShipmentAction />
+        <div className="flex items-center gap-2 print:hidden">
+          <Button variant="outline" onClick={() => window.print()}>
+            Print
+          </Button>
+          <AddShipmentAction />
+        </div>
       </div>
 
-      {shipmentsQuery.data && <KpiRow kpis={shipmentsQuery.data.kpis} />}
+      {shipmentsQuery.data && (
+        <div className="print:hidden">
+          <KpiRow kpis={shipmentsQuery.data.kpis} />
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-4 print:hidden">
         <div className="flex flex-col gap-1.5 sm:col-span-2">
           <Label htmlFor="search">Search by Shipment ID</Label>
           <Input
@@ -71,10 +79,6 @@ export function SchedulePage() {
         shipments={shipmentsQuery.data?.data ?? []}
         isLoading={shipmentsQuery.isLoading}
       />
-
-      <RequirePermission permission="shipment.cancellation.approve">
-        <CancellationApprovalQueue />
-      </RequirePermission>
     </div>
   );
 }
