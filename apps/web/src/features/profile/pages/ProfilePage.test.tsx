@@ -15,6 +15,7 @@ const baseUser = {
   roles: ['Manager'],
   permissions: ['identity.user.manage'],
   hasAvatar: false,
+  idCardNo: null,
 };
 
 function renderProfilePage() {
@@ -101,6 +102,36 @@ describe('ProfilePage', () => {
       expect(useAuthStore.getState().user?.fullName).toBe('Ashmika D. Silva');
     });
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+  });
+
+  it('shows Save once the ID card no is edited, and saves it via PATCH /me alongside full name', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url.endsWith('/me') && init?.method === 'PATCH') {
+          return Promise.resolve(
+            jsonResponse(200, { ...baseUser, idCardNo: '912345678V' }),
+          );
+        }
+        return Promise.resolve(jsonResponse(200, {}));
+      }),
+    );
+    renderProfilePage();
+
+    expect(screen.getByLabelText('ID card no')).toHaveValue('');
+    fireEvent.change(screen.getByLabelText('ID card no'), { target: { value: '912345678V' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(useAuthStore.getState().user?.idCardNo).toBe('912345678V');
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/me'),
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ fullName: 'Ashmika Dilshan', idCardNo: '912345678V' }),
+      }),
+    );
   });
 
   it('rejects a non-image file client-side without calling the server', () => {

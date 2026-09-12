@@ -47,7 +47,12 @@ export function DashboardPage() {
         <AddShipmentAction />
       </div>
 
-      {shipmentsQuery.data && <KpiRow kpis={shipmentsQuery.data.kpis} />}
+      {shipmentsQuery.data && (
+        <div className="flex flex-col gap-2">
+          <h2 className="font-medium">Shipment Status</h2>
+          <KpiRow kpis={shipmentsQuery.data.kpis} />
+        </div>
+      )}
 
       <RequirePermission permission="analytics.view">
         <BusinessOverviewCard />

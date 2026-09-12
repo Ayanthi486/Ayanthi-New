@@ -9,7 +9,6 @@ import { AuditService } from '../audit/audit.service';
 import {
   BusinessRuleError,
   ConflictError,
-  ForbiddenError,
   LockedError,
   NotFoundError,
 } from '../common/errors/app-error';
@@ -85,11 +84,15 @@ export class CostSheetService {
   }
 
   /**
-   * BR-59/60: DRAFT is editable by anyone holding costsheet.prepare (the
-   * route guard already proved that); RELEASED additionally requires
-   * costsheet.edit_released (Manager only) — checked here since the
-   * required permission depends on the record's state, not just the route
-   * (ARCHITECTURE §9 layer 2: ownership/scope checks live in the service).
+   * DRAFT and RELEASED are both editable by anyone holding costsheet.prepare
+   * (Executive or Manager — the route guard already proved that); Manager's
+   * costsheet.edit_released grant is redundant with prepare but kept as its
+   * own permission for a future narrower-scoped role. APPROVED instead
+   * requires costsheet.edit_approved (Manager only, direct request) — an
+   * Executive who could edit at every earlier stage loses access the moment
+   * the sheet is Approved. Checked here since the required permission
+   * depends on the record's state, not just the route (ARCHITECTURE §9
+   * layer 2: ownership/scope checks live in the service).
    */
   async update(id: string, input: UpdateCostSheetRequest, actor: RequestUser): Promise<CostSheet> {
     const updated = await this.auditService.auditedTransaction(
@@ -100,15 +103,12 @@ export class CostSheetService {
         if (!existing) throw new NotFoundError('Cost Sheet not found');
 
         if (existing.status === 'APPROVED') {
-          throw new LockedError('This Cost Sheet is Approved and locked against editing.');
-        }
-        if (existing.status === 'RELEASED') {
-          const canEditReleased = await this.permissionsService.hasPermission(
+          const canEditApproved = await this.permissionsService.hasPermission(
             actor.id,
-            'costsheet.edit_released',
+            'costsheet.edit_approved',
           );
-          if (!canEditReleased) {
-            throw new ForbiddenError('Only a Manager may edit a Cost Sheet after release');
+          if (!canEditApproved) {
+            throw new LockedError('This Cost Sheet is Approved — only a Manager may edit it now.');
           }
         }
 

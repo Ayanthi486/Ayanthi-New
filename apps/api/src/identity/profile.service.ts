@@ -20,6 +20,7 @@ interface ProfileUser {
   email: string;
   fullName: string;
   avatarStorageKey: string | null;
+  idCardNo: string | null;
 }
 
 /**
@@ -40,11 +41,22 @@ export class ProfileService {
     private readonly config: ConfigService<EnvConfig, true>,
   ) {}
 
-  async updateFullName(userId: string, fullName: string, actor: RequestUser): Promise<MeResponse> {
+  async updateProfile(
+    userId: string,
+    input: { fullName: string; idCardNo?: string },
+    actor: RequestUser,
+  ): Promise<MeResponse> {
     const updated = await this.auditService.auditedTransaction(
       this.prisma,
       { userId: actor.id, ipAddress: null, userAgent: null },
-      (tx) => tx.user.update({ where: { id: userId }, data: { fullName } }),
+      (tx) =>
+        tx.user.update({
+          where: { id: userId },
+          data: {
+            fullName: input.fullName,
+            ...(input.idCardNo !== undefined ? { idCardNo: input.idCardNo } : {}),
+          },
+        }),
     );
     return this.toMeResponse(updated);
   }
@@ -135,6 +147,7 @@ export class ProfileService {
       roles,
       permissions,
       hasAvatar: user.avatarStorageKey !== null,
+      idCardNo: user.idCardNo,
     };
   }
 }

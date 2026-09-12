@@ -4,6 +4,7 @@ export interface RequestUser {
   email: string;
   fullName: string;
   hasAvatar: boolean;
+  idCardNo: string | null;
 }
 
 declare module 'express' {

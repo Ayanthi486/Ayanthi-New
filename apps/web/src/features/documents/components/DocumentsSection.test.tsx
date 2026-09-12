@@ -36,7 +36,13 @@ const stickerFixture = {
 
 describe('DocumentsSection', () => {
   beforeEach(() => {
-    useAuthStore.setState({ permissions: new Set(['documents.manage']) });
+    // Security Clearance/AWB Sticker/CDN are Executive-only, gated on
+    // documents.basic.manage — this suite mostly exercises those three
+    // tabs, so the default test user holds both that and the broader
+    // documents.manage (needed for ADF/AWB/Shipment Documents).
+    useAuthStore.setState({
+      permissions: new Set(['documents.manage', 'documents.basic.manage']),
+    });
   });
 
   afterEach(() => {
@@ -107,7 +113,7 @@ describe('DocumentsSection', () => {
     expect(screen.getByRole('button', { name: 'Print' })).toBeInTheDocument();
   });
 
-  it('switches tabs and fetches the ADF with no Print action', async () => {
+  it('switches to the ADF tab: an upload-only document, not the generate/edit/issue flow', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) => {
@@ -115,7 +121,7 @@ describe('DocumentsSection', () => {
           return Promise.resolve(jsonResponse(200, { ready: true, missingFields: [] }));
         if (url.includes('/documents/ADF')) {
           return Promise.resolve(
-            jsonResponse(200, { ...stickerFixture, id: 'doc-2', type: 'ADF' }),
+            jsonResponse(404, { error: { code: 'NOT_FOUND', message: 'not found' } }),
           );
         }
         return Promise.resolve(jsonResponse(200, stickerFixture));
@@ -130,11 +136,55 @@ describe('DocumentsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ADF' }));
 
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: 'Print' })).not.toBeInTheDocument();
+      expect(screen.getByText('No file has been uploaded yet.')).toBeInTheDocument();
     });
+    // The generate/edit/issue flow (Preview/Print/Issue/Create) never applies to an upload type.
+    expect(screen.queryByRole('button', { name: 'Print' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Issue' })).not.toBeInTheDocument();
-    // BR-63: ADF has no rendered output at all — no Preview either, not just no Print.
     expect(screen.queryByRole('button', { name: 'Preview' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create ADF' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Upload file (PDF)')).toBeInTheDocument();
+  });
+
+  it('ADF shows Print/Download once a file has been uploaded, and uploading calls the upload endpoint', async () => {
+    const uploadedAdfFixture = {
+      ...stickerFixture,
+      id: 'doc-adf-1',
+      type: 'ADF',
+      status: 'ISSUED',
+      hasStoredFile: true,
+      issuedAt: '2026-08-02T00:00:00.000Z',
+    };
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/readiness'))
+        return Promise.resolve(jsonResponse(200, { ready: true, missingFields: [] }));
+      if (url.includes('/documents/ADF/upload') && init?.method === 'POST') {
+        return Promise.resolve(jsonResponse(201, uploadedAdfFixture));
+      }
+      if (url.includes('/documents/ADF')) {
+        return Promise.resolve(jsonResponse(200, uploadedAdfFixture));
+      }
+      return Promise.resolve(jsonResponse(200, stickerFixture));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderSection();
+    fireEvent.click(await screen.findByRole('button', { name: 'ADF' }));
+
+    const fileInput = await screen.findByLabelText('Replace file (PDF)');
+    expect(screen.getByRole('button', { name: 'Print' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
+
+    const file = new File(['%PDF-1.4'], 'doc.pdf', { type: 'application/pdf' });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          (c) => c[0].includes('/documents/ADF/upload') && c[1]?.method === 'POST',
+        ),
+      ).toBe(true),
+    );
   });
 
   function createFakeWindow() {
@@ -274,6 +324,59 @@ describe('DocumentsSection', () => {
     expect(screen.queryByRole('button', { name: 'Download' })).not.toBeInTheDocument();
   });
 
+  it('Create shows a Confirm/Cancel step first — Cancel backs out with no request', async () => {
+    const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
+      if (url.includes('/readiness'))
+        return Promise.resolve(jsonResponse(200, { ready: true, missingFields: [] }));
+      return Promise.resolve(
+        jsonResponse(404, { error: { code: 'NOT_FOUND', message: 'not found' } }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderSection();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Create Security Clearance' }),
+    );
+
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeInTheDocument();
+    const postCallsBefore = fetchMock.mock.calls.filter(
+      (c) => c[1]?.method === 'POST',
+    ).length;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.getByRole('button', { name: 'Create Security Clearance' })).toBeInTheDocument();
+    const postCallsAfter = fetchMock.mock.calls.filter((c) => c[1]?.method === 'POST').length;
+    expect(postCallsAfter).toBe(postCallsBefore);
+  });
+
+  it('field data starts read-only with an Edit button; Cancel reverts without saving', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.includes('/readiness'))
+          return Promise.resolve(jsonResponse(200, { ready: true, missingFields: [] }));
+        return Promise.resolve(jsonResponse(200, stickerFixture));
+      }),
+    );
+
+    renderSection();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument());
+
+    const input = screen.getByLabelText('Handover — Name of Employee') as HTMLInputElement;
+    expect(input).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(input).not.toBeDisabled();
+    fireEvent.change(input, { target: { value: 'Someone' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+  });
+
   it('shows an error toast instead of failing silently when Download fails', async () => {
     const issuedPdfFixture = {
       ...stickerFixture,
@@ -301,5 +404,128 @@ describe('DocumentsSection', () => {
     fireEvent.click(downloadButton);
 
     await waitFor(() => expect(useToastStore.getState().message).toBeTruthy());
+  });
+
+  it('with full permissions, shows all 9 tabs in the requested order', async () => {
+    useAuthStore.setState({
+      permissions: new Set([
+        'documents.manage',
+        'documents.basic.manage',
+        'costsheet.view',
+        'invoice.view',
+        'invoice.view.readonly',
+      ]),
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.includes('/readiness'))
+          return Promise.resolve(jsonResponse(200, { ready: true, missingFields: [] }));
+        return Promise.resolve(
+          jsonResponse(404, { error: { code: 'NOT_FOUND', message: 'not found' } }),
+        );
+      }),
+    );
+
+    renderSection();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Security Clearance' })).toBeInTheDocument(),
+    );
+
+    const tabs = screen
+      .getAllByRole('button')
+      .map((button) => button.textContent)
+      .filter((label): label is string =>
+        [
+          'Security Clearance',
+          'AWB Sticker',
+          'CDN',
+          'Cost Sheet',
+          'ADF',
+          'AWB',
+          'Shipment Documents',
+          'CUSDEC',
+          'Freight Invoice',
+        ].includes(label ?? ''),
+      );
+
+    expect(tabs).toEqual([
+      'Security Clearance',
+      'AWB Sticker',
+      'CDN',
+      'Cost Sheet',
+      'ADF',
+      'AWB',
+      'Shipment Documents',
+      'CUSDEC',
+      'Freight Invoice',
+    ]);
+  });
+
+  it('without costsheet/invoice permissions, those two tabs are hidden', async () => {
+    // beforeEach already grants only documents.manage.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.includes('/readiness'))
+          return Promise.resolve(jsonResponse(200, { ready: true, missingFields: [] }));
+        return Promise.resolve(
+          jsonResponse(404, { error: { code: 'NOT_FOUND', message: 'not found' } }),
+        );
+      }),
+    );
+
+    renderSection();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Security Clearance' })).toBeInTheDocument(),
+    );
+
+    expect(screen.queryByRole('button', { name: 'Cost Sheet' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Freight Invoice' })).not.toBeInTheDocument();
+  });
+
+  it('without documents.basic.manage (e.g. Manager), Security Clearance/AWB Sticker/CDN are hidden but ADF/AWB/Shipment Documents remain', async () => {
+    useAuthStore.setState({ permissions: new Set(['documents.manage']) });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.includes('/readiness'))
+          return Promise.resolve(jsonResponse(200, { ready: true, missingFields: [] }));
+        return Promise.resolve(
+          jsonResponse(404, { error: { code: 'NOT_FOUND', message: 'not found' } }),
+        );
+      }),
+    );
+
+    renderSection();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'ADF' })).toBeInTheDocument());
+
+    expect(screen.queryByRole('button', { name: 'Security Clearance' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'AWB Sticker' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'CDN' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'AWB' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Shipment Documents' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'CUSDEC' })).toBeInTheDocument();
+  });
+
+  it('clicking the Cost Sheet tab switches the pane to Cost Sheet content', async () => {
+    useAuthStore.setState({ permissions: new Set(['documents.manage', 'costsheet.view']) });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.includes('/readiness'))
+          return Promise.resolve(jsonResponse(200, { ready: true, missingFields: [] }));
+        return Promise.resolve(
+          jsonResponse(404, { error: { code: 'NOT_FOUND', message: 'not found' } }),
+        );
+      }),
+    );
+
+    renderSection();
+    fireEvent.click(await screen.findByRole('button', { name: 'Cost Sheet' }));
+
+    expect(
+      await screen.findByText("Hub Lanka's internal operational expenses, in LKR."),
+    ).toBeInTheDocument();
   });
 });

@@ -19,6 +19,7 @@ const baseUser = {
   fullName: 'Jane Perera',
   roles: ['Executive'],
   hasAvatar: false,
+  idCardNo: null,
 };
 
 function setUser(permissions: string[]) {

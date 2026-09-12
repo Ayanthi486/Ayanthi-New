@@ -43,7 +43,7 @@ export class ProfileController {
     @Body() dto: UpdateProfileDto,
     @CurrentUser() actor: RequestUser,
   ): Promise<MeResponse> {
-    return this.profileService.updateFullName(actor.id, dto.fullName, actor);
+    return this.profileService.updateProfile(actor.id, dto, actor);
   }
 
   @AuthenticatedOnly()

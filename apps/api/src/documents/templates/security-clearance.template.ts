@@ -7,6 +7,12 @@ import { escapeHtml, fieldCell, htmlDocument } from './template-helpers';
  * wording extracted and recorded verbatim in references/README.md). Three
  * sections: shipper/agent certification, warf-officer handover declaration,
  * taken-charge. Paper size is OPEN (OQ-2) — defaults to A4 until confirmed.
+ *
+ * Direct request: the certification block (name/designation/org/NIC), the
+ * Pieces/Weight line, and every date are no longer typed into `fieldData` —
+ * they live in `viewModel` instead (preparer's account + Profile, fixed
+ * constants, current date, and a deliberately blank Pieces/Weight "space to
+ * enter"). Only the handover/taken-charge officer's own fields stay manual.
  */
 export function renderSecurityClearanceHtml(
   viewModel: {
@@ -18,25 +24,33 @@ export function renderSecurityClearanceHtml(
     flightDate: string;
     destination: string | null;
     shipperName: string | null;
+    fullName: string | null;
+    designation: string | null;
+    organizationName: string | null;
+    nic: string | null;
+    certificationDate: string | null;
+    handoverDate: string | null;
+    takenChargeDate: string | null;
   },
   fieldData: SecurityClearanceFields,
 ): string {
   const pageCss = `@page { size: A4; margin: 15mm; }`;
+  const blank = '<span class="blank">.......................</span>';
   const body = `
 <div class="title">HUB LANKA (PVT) LTD</div>
 <div style="text-align:center;">Air cargo village, B I A, Katunayake.</div>
 <div style="text-align:center; font-weight:bold; margin: 8px 0;">SECURITY CLEARANCE CERTIFICATE</div>
 
 <p>
-I ${escapeHtml(fieldData.fullName) || '<span class="blank">.......................</span>'}
+I ${escapeHtml(viewModel.fullName) || blank}
 (Full name of the shipper/agent) being
-${escapeHtml(fieldData.designation) || '<span class="blank">.......................</span>'} (Designation) of
-${escapeHtml(fieldData.organizationName) || '<span class="blank">.......................</span>'}
+${escapeHtml(viewModel.designation) || blank} (Designation) of
+${escapeHtml(viewModel.organizationName) || blank}
 (Name of the organization) holder of National Identity Card Bearing No
-${escapeHtml(fieldData.nic) || '<span class="blank">.......................</span>'}
+${escapeHtml(viewModel.nic) || blank}
 hereby confirm that the shipment under Airway Bill bearing No ${escapeHtml(viewModel.awbNo)} consisting of
 (Description of Cargo) ${escapeHtml(viewModel.cargoDescription)}. Pieces/Weight
-${viewModel.boxCount ?? ''} / ${escapeHtml(viewModel.weightKg)} kg to be uplifted on Flight No &amp; Date
+${blank} / ${blank} kg to be uplifted on Flight No &amp; Date
 ${escapeHtml(viewModel.flightNo)} / ${escapeHtml(viewModel.flightDate)} to ${escapeHtml(viewModel.destination)}
 (Destination) has packed, sealed, and transported to the Cargo Complex, Bandaranayke International
 Airport, Katunayake under proper security and hygienic conditions. I further certify it is free from any
@@ -51,7 +65,7 @@ carriage by air.
 </p>
 <table style="margin-top:12px;">
   <tr><td style="width:50%;">Signature ......................................</td>
-      <td>Date ${escapeHtml(fieldData.certificationDate) || '......................................'}</td></tr>
+      <td>Date ${escapeHtml(viewModel.certificationDate) || '......................................'}</td></tr>
 </table>
 <p>Company Seal:</p>
 
@@ -64,13 +78,13 @@ Designation ${escapeHtml(fieldData.handoverDesignation)} in proper condition and
 fit for carriage by Air.
 </p>
 <table>
-  <tr>${fieldCell('NIC No', fieldData.handoverNic)}${fieldCell('Date', fieldData.handoverDate)}</tr>
+  <tr>${fieldCell('NIC No', fieldData.handoverNic)}${fieldCell('Date', viewModel.handoverDate)}</tr>
 </table>
 <p>Signature ......................................</p>
 
 <div class="section-title">Taken charge by</div>
 <table>
-  <tr>${fieldCell('Name', fieldData.takenChargeName)}${fieldCell('Staff No', fieldData.takenChargeStaffNo)}${fieldCell('Date', fieldData.takenChargeDate)}</tr>
+  <tr>${fieldCell('Name', fieldData.takenChargeName)}${fieldCell('Staff No', fieldData.takenChargeStaffNo)}${fieldCell('Date', viewModel.takenChargeDate)}</tr>
 </table>
 <p>Signature ......................................</p>`;
   return htmlDocument('Security Clearance Certificate', pageCss, body);

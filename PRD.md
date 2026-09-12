@@ -134,8 +134,9 @@ Search by Shipment ID. Filter by date.
 ### 5.3 Cost Sheet approval
 
 ```
-Executive prepares → RELEASES → Manager reviews → Manager edits if corrections needed
-→ Manager APPROVES → approval/signature recorded on the Cost Sheet
+Executive prepares, signs, RELEASES → Manager reviews → Executive or Manager
+edits while Released → Manager APPROVES → approval/signature recorded
+→ once Approved, only Manager may still edit (Executive locked out)
 ```
 
 ### 5.4 Payment
@@ -220,8 +221,9 @@ Authoritative numbered list. BR-31 is void (superseded).
 | BR-52 | Invoice Number is manually entered — no auto-generation |
 | BR-53 | Invoice Exchange Rate is controlled by the Manager |
 | BR-59 | Executive releases the Cost Sheet for Manager review |
-| BR-60 | Manager can edit the Cost Sheet after release when corrections are required |
+| BR-60 | Executive or Manager can edit the Cost Sheet after release when corrections are required |
 | BR-61 | Manager approves the Cost Sheet; approval/signature is recorded |
+| BR-68 | Once Approved, only Manager may still edit the Cost Sheet — Executive loses edit access |
 | BR-27 | Managers create invoices; Director views them |
 | BR-30 | Chargeable Weight is used for billing; weight breaks handled manually; no automatic rate calculation |
 | BR-31 | ~~Airline carrier cost is out of scope~~ — **VOID, superseded by BR-38/BR-45** |

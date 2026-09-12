@@ -90,6 +90,30 @@ describe('Profile (e2e)', () => {
     expect(res.status).toBe(400);
   });
 
+  // --- ID card no (Security Clearance NIC auto-fill source) -----------------
+  it('updates idCardNo via PATCH /me, reflected by GET /me', async () => {
+    const res = await request(server)
+      .patch('/api/v1/me')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fullName: 'Renamed E2E User', idCardNo: '912345678V' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.idCardNo).toBe('912345678V');
+
+    const me = await request(server).get('/api/v1/me').set('Authorization', `Bearer ${token}`);
+    expect(me.body.idCardNo).toBe('912345678V');
+  });
+
+  it('an empty idCardNo leaves the previously saved value unchanged (submits as omitted, not a clear)', async () => {
+    const res = await request(server)
+      .patch('/api/v1/me')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fullName: 'Renamed E2E User', idCardNo: '' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.idCardNo).toBe('912345678V');
+  });
+
   it('writes an audit row for a self-service name change', async () => {
     const res = await request(server)
       .patch('/api/v1/me')

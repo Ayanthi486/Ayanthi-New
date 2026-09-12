@@ -1,17 +1,15 @@
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { Shipment, UpdateShipmentRequest } from '@hub-lanka/shared';
 import { RequirePermission } from '@/app/RequirePermission';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Button } from '@/components/ui/button';
-import { CostSheetSection } from '@/features/costsheet/components/CostSheetSection';
 import { DocumentsSection } from '@/features/documents/components/DocumentsSection';
-import { InvoiceSection } from '@/features/invoice/components/InvoiceSection';
 import { BuyingRateSection } from '@/features/shipments/components/BuyingRateSection';
-import { CargoSection } from '@/features/shipments/components/CargoSection';
+import { CargoValueCell } from '@/features/shipments/components/CargoValueCell';
 import { ConflictDialog } from '@/features/shipments/components/ConflictDialog';
 import { LockedBanner } from '@/features/shipments/components/LockedBanner';
-import { ShipmentForm } from '@/features/shipments/components/ShipmentForm';
+import { SERVICE_TYPE_LABELS, ShipmentForm } from '@/features/shipments/components/ShipmentForm';
 import {
   useDeleteShipment,
   useShipment,
@@ -24,23 +22,60 @@ const ACTIVE_STATUSES: Shipment['status'][] = ['PENDING', 'CONFIRMED'];
 /** Delete locks later than editing does — only once Departed or Payment Received (matches shipment.service.ts's DELETE_LOCKED_STATUSES). */
 const DELETE_LOCKED_STATUSES: Shipment['status'][] = ['DEPARTED', 'PAYMENT_RECEIVED'];
 
-const FIELDS: { label: string; key: keyof Shipment }[] = [
-  { label: 'Shipment ID', key: 'shipmentNo' },
-  { label: 'Airline', key: 'airlineName' },
-  { label: 'Flight No', key: 'flightNo' },
-  { label: 'MAWB No', key: 'mawbNo' },
-  { label: 'House AWB', key: 'houseAwbNo' },
-  { label: 'Destination', key: 'destinationAirportCode' },
-  { label: 'Flight Date', key: 'flightDate' },
-  { label: 'Dep Time', key: 'depTime' },
-  { label: 'Handling Date', key: 'handlingDate' },
-  { label: 'Shipper', key: 'shipperName' },
-  { label: 'Consignee', key: 'consigneeName' },
-  { label: 'Commodity', key: 'commodityName' },
-  { label: 'CUSDEC No', key: 'cusdecNo' },
-  { label: 'Box count', key: 'boxCount' },
-  { label: 'Weight (kg)', key: 'weightKg' },
-  { label: 'Actual Departure', key: 'actualDepartureAt' },
+/** Grouped for the fields card below — one flat 17-field grid read as a single wall of text; three labeled groups scan in the order a reader actually needs them (what this shipment is, when it flies, what/who it's carrying). */
+const FIELD_GROUP_ORDER = ['Shipment', 'Flight', 'Cargo & Parties'] as const;
+
+const FIELDS: {
+  label: string;
+  key: keyof Shipment;
+  group: (typeof FIELD_GROUP_ORDER)[number];
+  format?: (value: unknown) => string;
+  // Only Box count/Weight need a live component (click-to-edit while
+  // Pending, via the shared CargoDialog) rather than a plain formatted
+  // string — see CargoValueCell.
+  render?: (shipment: Shipment) => ReactNode;
+}[] = [
+  { label: 'Shipment ID', key: 'shipmentNo', group: 'Shipment' },
+  { label: 'MAWB No', key: 'mawbNo', group: 'Shipment' },
+  { label: 'House AWB', key: 'houseAwbNo', group: 'Shipment' },
+  { label: 'CUSDEC No', key: 'cusdecNo', group: 'Shipment' },
+  {
+    label: 'Service Type',
+    key: 'serviceType',
+    group: 'Shipment',
+    format: (value) => SERVICE_TYPE_LABELS[value as Shipment['serviceType']],
+  },
+  { label: 'Airline', key: 'airlineName', group: 'Flight' },
+  { label: 'Flight No', key: 'flightNo', group: 'Flight' },
+  { label: 'Flight Date', key: 'flightDate', group: 'Flight' },
+  { label: 'Dep Time', key: 'depTime', group: 'Flight' },
+  { label: 'Handling Date', key: 'handlingDate', group: 'Flight' },
+  { label: 'Destination', key: 'destinationAirportCode', group: 'Flight' },
+  {
+    label: 'Actual Departure',
+    key: 'actualDepartureAt',
+    group: 'Flight',
+    format: (value) => (value ? new Date(value as string).toLocaleString() : '—'),
+  },
+  { label: 'Shipper', key: 'shipperName', group: 'Cargo & Parties' },
+  { label: 'Shipper Address', key: 'shipperAddress', group: 'Cargo & Parties' },
+  { label: 'Shipper Contact', key: 'shipperContact', group: 'Cargo & Parties' },
+  { label: 'Consignee', key: 'consigneeName', group: 'Cargo & Parties' },
+  { label: 'Consignee Address', key: 'consigneeAddress', group: 'Cargo & Parties' },
+  { label: 'Consignee Contact', key: 'consigneeContact', group: 'Cargo & Parties' },
+  { label: 'Commodity', key: 'commodityName', group: 'Cargo & Parties' },
+  {
+    label: 'Box count',
+    key: 'boxCount',
+    group: 'Cargo & Parties',
+    render: (shipment) => <CargoValueCell shipment={shipment} value={shipment.boxCount ?? '—'} />,
+  },
+  {
+    label: 'Weight (kg)',
+    key: 'weightKg',
+    group: 'Cargo & Parties',
+    render: (shipment) => <CargoValueCell shipment={shipment} value={shipment.weightKg ?? '—'} />,
+  },
 ];
 
 export function ShipmentViewPage() {
@@ -119,20 +154,29 @@ export function ShipmentViewPage() {
           />
         </div>
       ) : (
-        <div className="border-border bg-card grid grid-cols-1 gap-4 rounded-lg border p-6 sm:grid-cols-3">
-          {FIELDS.map((field) => (
-            <div key={field.key}>
-              <div className="text-muted-foreground text-xs">{field.label}</div>
-              <div className="text-sm">{String(shipment[field.key] ?? '—')}</div>
+        <div className="border-border bg-card flex flex-col gap-6 rounded-lg border p-6">
+          {FIELD_GROUP_ORDER.map((group, index) => (
+            <div key={group} className={index > 0 ? 'border-t pt-6' : undefined}>
+              <h3 className="text-muted-foreground mb-3 text-xs font-semibold tracking-wide uppercase">
+                {group}
+              </h3>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                {FIELDS.filter((field) => field.group === group).map((field) => (
+                  <div key={field.key}>
+                    <div className="text-muted-foreground text-xs">{field.label}</div>
+                    <div className="text-sm whitespace-pre-line">
+                      {field.render
+                        ? field.render(shipment)
+                        : field.format
+                          ? field.format(shipment[field.key])
+                          : String(shipment[field.key] ?? '—')}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>
-      )}
-
-      {shipment.status === 'PENDING' && (
-        <RequirePermission permission="cargo.boxweight.enter">
-          <CargoSection shipment={shipment} />
-        </RequirePermission>
       )}
 
       {shipment.status === 'PENDING' && (
@@ -141,18 +185,20 @@ export function ShipmentViewPage() {
         </RequirePermission>
       )}
 
-      {/* BR-67: the Cost Sheet lifecycle is independent of shipment status — not gated on PENDING. */}
-      <RequirePermission permission="costsheet.view">
-        <CostSheetSection shipmentId={shipment.id} />
-      </RequirePermission>
-
-      {/* Decision #11: invoice.view (Manager) and invoice.view.readonly (Director) are a genuine either/or. */}
-      <RequirePermission permission={['invoice.view', 'invoice.view.readonly']}>
-        <InvoiceSection shipmentId={shipment.id} />
-      </RequirePermission>
-
-      {/* CONTEXT.md §15: five document tabs, keyed to Shipment ID — not gated on PENDING. */}
-      <RequirePermission permission={['documents.manage', 'documents.view.readonly']}>
+      {/* Security Clearance/AWB Sticker/CDN/Cost Sheet/ADF/AWB/Shipment
+          Documents/Freight Invoice, unified into one tab bar — each tab
+          gates itself on its own permission (see DocumentsSection.tsx);
+          this outer check just covers "can this viewer see any of them at
+          all," matching the narrowest of the tabs' own individual gates. */}
+      <RequirePermission
+        permission={[
+          'documents.manage',
+          'documents.view.readonly',
+          'costsheet.view',
+          'invoice.view',
+          'invoice.view.readonly',
+        ]}
+      >
         <DocumentsSection shipmentId={shipment.id} />
       </RequirePermission>
 

@@ -4,8 +4,10 @@ import {
   documentFieldsSchemaByType,
   DOCUMENT_TYPES,
   PDF_DOCUMENT_TYPES,
+  UPLOAD_DOCUMENT_TYPES,
   type DocumentReadiness,
   type DocumentType,
+  type PermissionKey,
   type ShipmentDocument as SharedShipmentDocument,
 } from '@hub-lanka/shared';
 import { AuditService } from '../audit/audit.service';
@@ -22,7 +24,7 @@ import type { RequestUser } from '../identity/types';
 import { PrinterAdapter } from '../printing/printer-adapter';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
-import { renderAwbHtml } from './templates/awb.template';
+import { validateFileKind } from '../storage/storage.util';
 import { renderAwbStickerHtml } from './templates/awb-sticker.template';
 import { renderCdnHtml } from './templates/cdn.template';
 import { renderSecurityClearanceHtml } from './templates/security-clearance.template';
@@ -54,13 +56,20 @@ const PAGE_SIZE_BY_TYPE: Record<DocumentType, string> = {
   ADF: 'N/A',
   AWB: 'A4',
   CDN: 'A4',
+  CUSDEC: 'N/A',
 };
+
+/** Direct request: these three are Executive-only — `documents.basic.manage`, held by nobody else, gates them instead of the broader `documents.manage`/`documents.view.readonly` every other type uses. */
+const EXECUTIVE_ONLY_DOCUMENT_TYPES: DocumentType[] = ['SECURITY_CLEARANCE', 'AWB_STICKER', 'CDN'];
 
 /**
  * Documents (Phase 7, PRD §9, CONTEXT.md §15/§16). BR-07/25/26/33/34/35/36/
  * 62/63/64/65. `documents.manage` (Executive+Manager) creates/edits/issues;
  * `documents.view.readonly` (Director) reads only — same OR-permission
- * pattern as Invoice/Payment for GET routes.
+ * pattern as Invoice/Payment for GET routes. Security Clearance/AWB
+ * Sticker/CDN are an exception to that: `documents.basic.manage`
+ * (Executive-only) gates them instead, so Manager/Director have no
+ * access — view or manage — to those three specific types.
  */
 @Injectable()
 export class DocumentsService {
@@ -86,14 +95,17 @@ export class DocumentsService {
     type: DocumentType,
     actor: RequestUser,
   ): Promise<SharedShipmentDocument> {
-    await this.checkManagePermission(actor);
+    await this.checkManagePermission(actor, type);
+    if ((UPLOAD_DOCUMENT_TYPES as readonly string[]).includes(type)) {
+      throw new BusinessRuleError(`${type} is an uploaded document — upload a file instead.`);
+    }
     const shipment = await this.findShipmentOrThrow(shipmentId);
     const readiness = computeDocumentReadiness(shipment);
     if (!readiness.ready) throw new BusinessRuleError(DOCUMENT_BLOCKED_MESSAGE);
 
     const latest = await this.findLatest(shipmentId, type);
     if (latest && latest.status === 'DRAFT') {
-      return toSharedDocument(latest, buildShipmentViewModel(type, shipment));
+      return toSharedDocument(latest, buildShipmentViewModel(type, shipment, actor));
     }
 
     const created = await this.auditService.auditedTransaction(
@@ -110,7 +122,7 @@ export class DocumentsService {
           },
         }),
     );
-    return toSharedDocument(created, buildShipmentViewModel(type, shipment));
+    return toSharedDocument(created, buildShipmentViewModel(type, shipment, actor));
   }
 
   async getLatest(
@@ -118,11 +130,11 @@ export class DocumentsService {
     type: DocumentType,
     actor: RequestUser,
   ): Promise<SharedShipmentDocument> {
-    await this.checkViewPermission(actor);
+    await this.checkViewPermission(actor, type);
     const shipment = await this.findShipmentOrThrow(shipmentId);
     const latest = await this.findLatest(shipmentId, type);
     if (!latest) throw new NotFoundError('No document has been created yet for this type');
-    return toSharedDocument(latest, buildShipmentViewModel(type, shipment));
+    return toSharedDocument(latest, buildShipmentViewModel(type, shipment, actor));
   }
 
   async updateFieldData(
@@ -131,7 +143,7 @@ export class DocumentsService {
     fieldData: Record<string, unknown>,
     actor: RequestUser,
   ): Promise<SharedShipmentDocument> {
-    await this.checkManagePermission(actor);
+    await this.checkManagePermission(actor, type);
     const schema = documentFieldsSchemaByType[type];
     const parsed = schema.safeParse(fieldData);
     if (!parsed.success) {
@@ -151,25 +163,28 @@ export class DocumentsService {
       (tx) =>
         tx.shipmentDocument.update({ where: { id: latest.id }, data: { fieldData: parsed.data } }),
     );
-    return toSharedDocument(updated, buildShipmentViewModel(type, shipment));
+    return toSharedDocument(updated, buildShipmentViewModel(type, shipment, actor));
   }
 
   /**
    * Decision #3: ADF is never issuable (BR-63, AC-20) — rejected before any
-   * other work. AWB Sticker freezes fieldData/snapshot but renders no PDF
-   * (Print only, no Download). Security Clearance/AWB/CDN additionally
-   * render via the worker and store the file — ARCHITECTURE §14's "Issue
-   * document" transaction: version freeze + snapshot + stored file
-   * reference + audit, all atomic.
+   * other work. AWB is likewise upload-only now (`uploadFile` below), not
+   * generated — same rejection. AWB Sticker freezes fieldData/snapshot but
+   * renders no PDF (Print only, no Download). Security Clearance/CDN
+   * additionally render via the worker and store the file — ARCHITECTURE
+   * §14's "Issue document" transaction: version freeze + snapshot + stored
+   * file reference + audit, all atomic.
    */
   async issue(
     shipmentId: string,
     type: DocumentType,
     actor: RequestUser,
   ): Promise<SharedShipmentDocument> {
-    await this.checkManagePermission(actor);
-    if (type === 'ADF') {
-      throw new BusinessRuleError('The ADF has no issue action (BR-63 — no print path)');
+    await this.checkManagePermission(actor, type);
+    if ((UPLOAD_DOCUMENT_TYPES as readonly string[]).includes(type)) {
+      throw new BusinessRuleError(
+        `${type} is an uploaded document and has no issue action — upload or replace the file instead.`,
+      );
     }
 
     const shipment = await this.findShipmentOrThrow(shipmentId);
@@ -182,7 +197,7 @@ export class DocumentsService {
       throw new LockedError('This document is already Issued.');
     }
 
-    const viewModel = buildShipmentViewModel(type, shipment);
+    const viewModel = buildShipmentViewModel(type, shipment, actor);
     const snapshot = { viewModel, fieldData: latest.fieldData };
 
     let storageKey: string | null = null;
@@ -235,9 +250,11 @@ export class DocumentsService {
     type: DocumentType,
     actor: RequestUser,
   ): Promise<{ html: string; pageSize: string }> {
-    await this.checkViewPermission(actor);
-    if (type === 'ADF') {
-      throw new BusinessRuleError('The ADF has no print action (BR-63)');
+    await this.checkViewPermission(actor, type);
+    if ((UPLOAD_DOCUMENT_TYPES as readonly string[]).includes(type)) {
+      throw new BusinessRuleError(
+        `${type} is an uploaded document — print/download the uploaded file instead.`,
+      );
     }
 
     const shipment = await this.findShipmentOrThrow(shipmentId);
@@ -255,7 +272,7 @@ export class DocumentsService {
     const viewModel =
       latest.status === 'ISSUED' && latest.snapshot
         ? (latest.snapshot as { viewModel: Record<string, unknown> }).viewModel
-        : buildShipmentViewModel(type, shipment);
+        : buildShipmentViewModel(type, shipment, actor);
     const html = this.renderHtml(type, viewModel, latest.fieldData as Record<string, unknown>);
     return { html, pageSize: PAGE_SIZE_BY_TYPE[type] };
   }
@@ -264,13 +281,72 @@ export class DocumentsService {
     documentId: string,
     actor: RequestUser,
   ): Promise<{ buffer: Buffer; filename: string }> {
-    await this.checkViewPermission(actor);
     const document = await this.prisma.shipmentDocument.findUnique({ where: { id: documentId } });
     if (!document) throw new NotFoundError('Document not found');
+    // Permission depends on the document's own type (Security Clearance/AWB
+    // Sticker/CDN are Executive-only) — the row has to be read first to know it.
+    await this.checkViewPermission(actor, document.type);
     if (!document.storageKey) throw new NotFoundError('This document has no stored file');
 
     const buffer = await this.storage.read(document.storageKey);
     return { buffer, filename: `${document.type.toLowerCase()}-v${document.version}.pdf` };
+  }
+
+  /**
+   * ADF/AWB are user-uploaded files, not generated in-house — no fieldData
+   * form, no template render, no separate Issue step. Each upload creates a
+   * new immutable version (mirrors the versioning convention every other
+   * document type already uses) and is stored ISSUED straight away, since
+   * the uploaded file itself is the finished artifact — there's no
+   * draft-then-issue distinction for a plain attachment. A later "replace
+   * file" is just another upload, creating version+1.
+   */
+  async uploadFile(
+    shipmentId: string,
+    type: DocumentType,
+    file: { buffer: Buffer; mimetype: string },
+    actor: RequestUser,
+  ): Promise<SharedShipmentDocument> {
+    await this.checkManagePermission(actor, type);
+    if (!(UPLOAD_DOCUMENT_TYPES as readonly string[]).includes(type)) {
+      throw new BusinessRuleError(`${type} is not an upload document type`);
+    }
+
+    const shipment = await this.findShipmentOrThrow(shipmentId);
+    const readiness = computeDocumentReadiness(shipment);
+    if (!readiness.ready) throw new BusinessRuleError(DOCUMENT_BLOCKED_MESSAGE);
+
+    const kind = validateFileKind(file.mimetype, file.buffer);
+    if (kind !== 'pdf') {
+      throw new BusinessRuleError(`${type} must be uploaded as a PDF file`);
+    }
+
+    const saved = await this.storage.save({
+      buffer: file.buffer,
+      prefix: `documents/${type.toLowerCase()}`,
+      extension: 'pdf',
+    });
+
+    const latest = await this.findLatest(shipmentId, type);
+    const created = await this.auditService.auditedTransaction(
+      this.prisma,
+      { userId: actor.id, ipAddress: null, userAgent: null },
+      (tx) =>
+        tx.shipmentDocument.create({
+          data: {
+            shipmentId,
+            type,
+            version: (latest?.version ?? 0) + 1,
+            fieldData: {},
+            storageKey: saved.key,
+            status: 'ISSUED',
+            createdByUserId: actor.id,
+            issuedByUserId: actor.id,
+            issuedAt: new Date(),
+          },
+        }),
+    );
+    return toSharedDocument(created, buildShipmentViewModel(type, shipment, actor));
   }
 
   /**
@@ -281,6 +357,10 @@ export class DocumentsService {
    */
   async openStaleIssuedDraftsIfNeeded(shipmentId: string, actor: RequestUser): Promise<void> {
     for (const type of DOCUMENT_TYPES) {
+      // Upload types don't read live shipment fields into a rendered
+      // output — there's nothing for a shipment edit to make "stale" — so
+      // an edit here must never reopen an uploaded file as a blank draft.
+      if ((UPLOAD_DOCUMENT_TYPES as readonly string[]).includes(type)) continue;
       const latest = await this.findLatest(shipmentId, type);
       if (latest && latest.status === 'ISSUED') {
         await this.auditService.auditedTransaction(
@@ -324,18 +404,15 @@ export class DocumentsService {
           viewModel as unknown as Parameters<typeof renderAwbStickerHtml>[0],
           fieldData,
         );
-      case 'AWB':
-        return renderAwbHtml(
-          viewModel as unknown as Parameters<typeof renderAwbHtml>[0],
-          fieldData,
-        );
       case 'CDN':
         return renderCdnHtml(
           viewModel as unknown as Parameters<typeof renderCdnHtml>[0],
           fieldData,
         );
       case 'ADF':
-        throw new BusinessRuleError('The ADF has no rendered output (BR-63)');
+      case 'AWB':
+      case 'CUSDEC':
+        throw new BusinessRuleError(`${type} is an uploaded document and has no rendered output`);
     }
   }
 
@@ -355,12 +432,22 @@ export class DocumentsService {
     return shipment;
   }
 
-  private async checkManagePermission(actor: RequestUser): Promise<void> {
-    const allowed = await this.permissionsService.hasPermission(actor.id, 'documents.manage');
-    if (!allowed) throw new ForbiddenError('Missing permission: documents.manage');
+  private async checkManagePermission(actor: RequestUser, type: DocumentType): Promise<void> {
+    const required: PermissionKey = EXECUTIVE_ONLY_DOCUMENT_TYPES.includes(type)
+      ? 'documents.basic.manage'
+      : 'documents.manage';
+    const allowed = await this.permissionsService.hasPermission(actor.id, required);
+    if (!allowed) throw new ForbiddenError(`Missing permission: ${required}`);
   }
 
-  private async checkViewPermission(actor: RequestUser): Promise<void> {
+  /** `type` omitted only for the shipment-level readiness check, which isn't specific to any one document type. */
+  private async checkViewPermission(actor: RequestUser, type?: DocumentType): Promise<void> {
+    if (type && EXECUTIVE_ONLY_DOCUMENT_TYPES.includes(type)) {
+      const allowed = await this.permissionsService.hasPermission(actor.id, 'documents.basic.manage');
+      if (!allowed) throw new ForbiddenError('Missing permission: documents.basic.manage');
+      return;
+    }
+
     const [canManage, canViewReadonly] = await Promise.all([
       this.permissionsService.hasPermission(actor.id, 'documents.manage'),
       this.permissionsService.hasPermission(actor.id, 'documents.view.readonly'),

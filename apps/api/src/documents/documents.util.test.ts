@@ -8,6 +8,8 @@ import {
   type ShipmentDocumentRow,
 } from './documents.util';
 
+const baseActor = { fullName: 'Priyantha Jayasuriya', idCardNo: '912345678V' };
+
 const baseShipment: DocumentShipmentRow = {
   mawbNo: '157 0659 8944',
   flightNo: 'QR0655',
@@ -55,22 +57,29 @@ describe('documents.util', () => {
   });
 
   describe("buildShipmentViewModel — BR-35 (only PRD §9's confirmed populated-from-shipment fields)", () => {
-    it('Security Clearance: AWB, cargo description, BOX/WEIGHT, flight, date, destination, shipper', () => {
-      const vm = buildShipmentViewModel('SECURITY_CLEARANCE', baseShipment);
+    it('Security Clearance: AWB, cargo description, flight, date, destination, shipper — BOX/WEIGHT deliberately blank, certification block from the preparer + fixed constants + today', () => {
+      const vm = buildShipmentViewModel('SECURITY_CLEARANCE', baseShipment, baseActor);
       expect(vm).toEqual({
         awbNo: '157 0659 8944',
         cargoDescription: 'FRESH FISH',
-        boxCount: 26,
-        weightKg: '444.50',
+        boxCount: null,
+        weightKg: null,
         flightNo: 'QR0655',
         flightDate: '2026-08-04',
         destination: 'MXP',
         shipperName: 'OCEAN LINE SEA FOODS PVT LTD',
+        fullName: 'Priyantha Jayasuriya',
+        designation: 'Junior Executive',
+        organizationName: 'HUB Lanka (Pvt) Ltd',
+        nic: '912345678V',
+        certificationDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) as string,
+        handoverDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) as string,
+        takenChargeDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) as string,
       });
     });
 
     it('AWB Sticker: AWB, origin (fixed CMB), destination, BOX — no barcode field', () => {
-      const vm = buildShipmentViewModel('AWB_STICKER', baseShipment);
+      const vm = buildShipmentViewModel('AWB_STICKER', baseShipment, baseActor);
       expect(vm).toEqual({
         origin: 'CMB',
         awbNo: '157 0659 8944',
@@ -80,7 +89,7 @@ describe('documents.util', () => {
     });
 
     it('CDN: shipper+address, consignee+address, flight, destination, MAWB, BOX, weight, commodity, CUSDEC', () => {
-      const vm = buildShipmentViewModel('CDN', baseShipment);
+      const vm = buildShipmentViewModel('CDN', baseShipment, baseActor);
       expect(vm).toEqual({
         shipperName: 'OCEAN LINE SEA FOODS PVT LTD',
         shipperAddress: 'MEDA MUKALANA WATTA',
@@ -98,8 +107,8 @@ describe('documents.util', () => {
     });
 
     it("never includes a field not in PRD §9's populated-from-shipment column (e.g. no houseAwbNo anywhere)", () => {
-      for (const type of ['SECURITY_CLEARANCE', 'AWB_STICKER', 'ADF', 'AWB', 'CDN'] as const) {
-        const vm = buildShipmentViewModel(type, baseShipment);
+      for (const type of ['SECURITY_CLEARANCE', 'AWB_STICKER', 'ADF', 'AWB', 'CDN', 'CUSDEC'] as const) {
+        const vm = buildShipmentViewModel(type, baseShipment, baseActor);
         expect(Object.keys(vm)).not.toContain('houseAwbNo');
       }
     });

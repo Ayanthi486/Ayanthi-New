@@ -58,6 +58,7 @@ describe('Shipment core (e2e)', () => {
       consigneeId: masterData.consigneeId,
       commodityId: masterData.commodityId,
       destinationAirportId: masterData.airportId,
+      serviceType: 'BOOKING_AND_HANDLING',
       flightNo: 'EK123',
       mawbNo: '176-0000-0001',
       flightDate: colomboToday(),
@@ -192,6 +193,79 @@ describe('Shipment core (e2e)', () => {
       expect(ids).toContain(created.id);
     });
 
+    // --- Date range filters on the full departure instant (flightDate + depTime), across midnight/noon/end-of-day boundaries ---
+    it('an explicit range includes every departure time on the first and last day and excludes the day after', async () => {
+      const day1 = addDays(colomboToday(), 200);
+      const day2 = addDays(colomboToday(), 201);
+      const dayAfter = addDays(colomboToday(), 202);
+
+      const startOfDay1 = await createShipment(managerToken, { flightDate: day1, depTime: '00:00' });
+      const midDay1 = await createShipment(managerToken, { flightDate: day1, depTime: '10:00' });
+      const noonDay1 = await createShipment(managerToken, { flightDate: day1, depTime: '12:00' });
+      const midDay2 = await createShipment(managerToken, { flightDate: day2, depTime: '10:00' });
+      const endOfDay2 = await createShipment(managerToken, { flightDate: day2, depTime: '23:59' });
+      const startOfDayAfter = await createShipment(managerToken, {
+        flightDate: dayAfter,
+        depTime: '00:00',
+      });
+
+      const res = await request(server)
+        .get('/api/v1/shipments')
+        .query({ dateFrom: day1, dateTo: day2 })
+        .set('Authorization', `Bearer ${managerToken}`);
+
+      expect(res.status).toBe(200);
+      const ids = (res.body.data as { id: string }[]).map((s) => s.id);
+      expect(ids).toContain(startOfDay1.id);
+      expect(ids).toContain(midDay1.id);
+      expect(ids).toContain(noonDay1.id);
+      expect(ids).toContain(midDay2.id);
+      expect(ids).toContain(endOfDay2.id);
+      expect(ids).not.toContain(startOfDayAfter.id);
+    });
+
+    it('dateFrom alone is an open-ended lower bound with no upper limit', async () => {
+      const from = addDays(colomboToday(), 300);
+      const dayBefore = addDays(colomboToday(), 299);
+      const farFuture = addDays(colomboToday(), 900);
+
+      const onBoundary = await createShipment(managerToken, { flightDate: from });
+      const wayInFuture = await createShipment(managerToken, { flightDate: farFuture });
+      const excludedBefore = await createShipment(managerToken, { flightDate: dayBefore });
+
+      const res = await request(server)
+        .get('/api/v1/shipments')
+        .query({ dateFrom: from })
+        .set('Authorization', `Bearer ${managerToken}`);
+
+      expect(res.status).toBe(200);
+      const ids = (res.body.data as { id: string }[]).map((s) => s.id);
+      expect(ids).toContain(onBoundary.id);
+      expect(ids).toContain(wayInFuture.id);
+      expect(ids).not.toContain(excludedBefore.id);
+    });
+
+    it('dateTo alone is an open-ended upper bound with no lower limit', async () => {
+      const to = addDays(colomboToday(), 400);
+      const dayAfter = addDays(colomboToday(), 401);
+      const wayInPast = addDays(colomboToday(), 350);
+
+      const onBoundary = await createShipment(managerToken, { flightDate: to });
+      const wayEarlier = await createShipment(managerToken, { flightDate: wayInPast });
+      const excludedAfter = await createShipment(managerToken, { flightDate: dayAfter });
+
+      const res = await request(server)
+        .get('/api/v1/shipments')
+        .query({ dateTo: to })
+        .set('Authorization', `Bearer ${managerToken}`);
+
+      expect(res.status).toBe(200);
+      const ids = (res.body.data as { id: string }[]).map((s) => s.id);
+      expect(ids).toContain(onBoundary.id);
+      expect(ids).toContain(wayEarlier.id);
+      expect(ids).not.toContain(excludedAfter.id);
+    });
+
     it('KPIs tie out to the returned list for the same filter', async () => {
       const targetDate = addDays(colomboToday(), 40);
       await createShipment(managerToken, { flightDate: targetDate });
@@ -280,21 +354,40 @@ describe('Shipment core (e2e)', () => {
       expect(res.body.status).toBe('PAYMENT_RECEIVED');
     });
 
-    it('setting Departed without actualDepartureAt is rejected', async () => {
-      const shipment = await createShipment(managerToken);
-      const res = await request(server)
-        .patch(`/api/v1/shipments/${shipment.id}/status`)
-        .set('Authorization', `Bearer ${managerToken}`)
-        .send({ status: 'DEPARTED', version: 0 });
-      expect(res.status).toBe(400);
-    });
-
-    it('setting Departed with actualDepartureAt records it and resolves an open cut-off alert', async () => {
+    it('setting Departed without box/weight entered is rejected', async () => {
       const shipment = await createShipment(managerToken);
       const res = await request(server)
         .patch(`/api/v1/shipments/${shipment.id}/status`)
         .set('Authorization', `Bearer ${managerToken}`)
         .send({ status: 'DEPARTED', version: 0, actualDepartureAt: '2026-09-11T20:00' });
+      expect(res.status).toBe(422);
+    });
+
+    it('setting Departed without actualDepartureAt is rejected', async () => {
+      const shipment = await createShipment(managerToken);
+      await request(server)
+        .patch(`/api/v1/shipments/${shipment.id}/cargo`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({ version: 0, boxCount: 5, weightKg: '100' });
+
+      const res = await request(server)
+        .patch(`/api/v1/shipments/${shipment.id}/status`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({ status: 'DEPARTED', version: 1 });
+      expect(res.status).toBe(400);
+    });
+
+    it('setting Departed with actualDepartureAt records it and resolves an open cut-off alert', async () => {
+      const shipment = await createShipment(managerToken);
+      await request(server)
+        .patch(`/api/v1/shipments/${shipment.id}/cargo`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({ version: 0, boxCount: 5, weightKg: '100' });
+
+      const res = await request(server)
+        .patch(`/api/v1/shipments/${shipment.id}/status`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({ status: 'DEPARTED', version: 1, actualDepartureAt: '2026-09-11T20:00' });
       expect(res.status).toBe(200);
       expect(res.body.status).toBe('DEPARTED');
       expect(res.body.actualDepartureAt).not.toBeNull();
@@ -303,7 +396,7 @@ describe('Shipment core (e2e)', () => {
       const secondRes = await request(server)
         .patch(`/api/v1/shipments/${shipment.id}/status`)
         .set('Authorization', `Bearer ${managerToken}`)
-        .send({ status: 'DEPARTED', version: 1 });
+        .send({ status: 'DEPARTED', version: 2 });
       expect(secondRes.status).toBe(200);
       expect(secondRes.body.actualDepartureAt).toBe(res.body.actualDepartureAt);
     });
@@ -392,26 +485,36 @@ describe('Shipment core (e2e)', () => {
   describe('Departed locking', () => {
     it('AC-12: PATCH on a Departed shipment returns 423', async () => {
       const shipment = await createShipment(managerToken);
+      await request(server)
+        .patch(`/api/v1/shipments/${shipment.id}/cargo`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({ version: 0, boxCount: 5, weightKg: '100' });
+
       const departRes = await request(server)
         .patch(`/api/v1/shipments/${shipment.id}/status`)
         .set('Authorization', `Bearer ${managerToken}`)
-        .send({ status: 'DEPARTED', version: 0, actualDepartureAt: '2026-09-11T20:00' });
+        .send({ status: 'DEPARTED', version: 1, actualDepartureAt: '2026-09-11T20:00' });
       expect(departRes.status).toBe(200);
       expect(departRes.body.status).toBe('DEPARTED');
 
       const patchRes = await request(server)
         .patch(`/api/v1/shipments/${shipment.id}`)
         .set('Authorization', `Bearer ${managerToken}`)
-        .send({ version: 1, houseAwbNo: 'HL 0001' });
+        .send({ version: 2, houseAwbNo: 'HL 0001' });
       expect(patchRes.status).toBe(423);
     });
 
     it('AC-12: DELETE on a Departed shipment returns 423', async () => {
       const shipment = await createShipment(managerToken);
       await request(server)
+        .patch(`/api/v1/shipments/${shipment.id}/cargo`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({ version: 0, boxCount: 5, weightKg: '100' });
+
+      await request(server)
         .patch(`/api/v1/shipments/${shipment.id}/status`)
         .set('Authorization', `Bearer ${managerToken}`)
-        .send({ status: 'DEPARTED', version: 0, actualDepartureAt: '2026-09-11T20:00' });
+        .send({ status: 'DEPARTED', version: 1, actualDepartureAt: '2026-09-11T20:00' });
 
       const deleteRes = await request(server)
         .delete(`/api/v1/shipments/${shipment.id}`)

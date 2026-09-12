@@ -9,5 +9,6 @@ export * from './costsheet.js';
 export * from './invoice.js';
 export * from './payment.js';
 export * from './documents.js';
+export * from './attachments.js';
 export * from './cutoff.js';
 export * from './analytics.js';

@@ -93,6 +93,7 @@ describe('Documents (e2e)', () => {
         consigneeId: masterData.consigneeId,
         commodityId: masterData.commodityId,
         destinationAirportId: masterData.airportId,
+        serviceType: 'BOOKING_AND_HANDLING',
         flightNo: 'EK123',
         mawbNo: '176-0000-0001',
         flightDate: colomboToday(),
@@ -122,12 +123,12 @@ describe('Documents (e2e)', () => {
 
     const readiness = await request(server)
       .get(`/api/v1/shipments/${shipmentId}/documents/readiness`)
-      .set('Authorization', `Bearer ${managerToken}`);
+      .set('Authorization', `Bearer ${executiveToken}`);
     expect(readiness.body).toEqual({ ready: false, missingFields: ['boxCount', 'weightKg'] });
 
     const createAttempt = await request(server)
       .post(`/api/v1/shipments/${shipmentId}/documents/SECURITY_CLEARANCE`)
-      .set('Authorization', `Bearer ${managerToken}`);
+      .set('Authorization', `Bearer ${executiveToken}`);
     expect(createAttempt.status).toBe(422);
     expect(createAttempt.body.error.message).toBe(
       'Cannot generate document. Please enter Box and Weight information.',
@@ -148,6 +149,9 @@ describe('Documents (e2e)', () => {
   });
 
   // --- Build order item 1: AWB Sticker — no PDF, no Download ---------------
+  // Security Clearance/AWB Sticker/CDN are Executive-only (direct request)
+  // — every request in this describe block uses executiveToken, never
+  // managerToken, on purpose.
   describe('AWB Sticker (BR-62, no stored file)', () => {
     it('creates a DRAFT populated from the shipment, edits fieldData, issues with no stored file', async () => {
       const shipmentId = await createShipment();
@@ -155,28 +159,28 @@ describe('Documents (e2e)', () => {
 
       const created = await request(server)
         .post(`/api/v1/shipments/${shipmentId}/documents/AWB_STICKER`)
-        .set('Authorization', `Bearer ${managerToken}`);
+        .set('Authorization', `Bearer ${executiveToken}`);
       expect(created.status).toBe(201);
       expect(created.body.viewModel.origin).toBe('CMB');
       expect(created.body.viewModel.boxCount).toBe(26);
 
       const updated = await request(server)
         .patch(`/api/v1/shipments/${shipmentId}/documents/AWB_STICKER`)
-        .set('Authorization', `Bearer ${managerToken}`)
+        .set('Authorization', `Bearer ${executiveToken}`)
         .send({ fieldData: { carrierName: 'EMIRATES SKY CARGO' } });
       expect(updated.status).toBe(200);
       expect(updated.body.fieldData.carrierName).toBe('EMIRATES SKY CARGO');
 
       const printPayload = await request(server)
         .get(`/api/v1/shipments/${shipmentId}/documents/AWB_STICKER/print`)
-        .set('Authorization', `Bearer ${managerToken}`);
+        .set('Authorization', `Bearer ${executiveToken}`);
       expect(printPayload.status).toBe(200);
       expect(printPayload.body.pageSize).toBe('12cm x 8cm');
       expect(printPayload.body.html).toContain('EMIRATES SKY CARGO');
 
       const issued = await request(server)
         .post(`/api/v1/shipments/${shipmentId}/documents/AWB_STICKER/issue`)
-        .set('Authorization', `Bearer ${managerToken}`);
+        .set('Authorization', `Bearer ${executiveToken}`);
       expect(issued.status).toBe(201);
       expect(issued.body.status).toBe('ISSUED');
       expect(issued.body.hasStoredFile).toBe(false);
@@ -191,11 +195,11 @@ describe('Documents (e2e)', () => {
       await enterCargo(shipmentId);
       await request(server)
         .post(`/api/v1/shipments/${shipmentId}/documents/AWB_STICKER`)
-        .set('Authorization', `Bearer ${managerToken}`);
+        .set('Authorization', `Bearer ${executiveToken}`);
 
       await request(server)
         .post(`/api/v1/shipments/${shipmentId}/documents/AWB_STICKER/issue`)
-        .set('Authorization', `Bearer ${managerToken}`);
+        .set('Authorization', `Bearer ${executiveToken}`);
 
       expect(printSpy).toHaveBeenCalledWith(
         expect.objectContaining({ pageSize: '12cm x 8cm', html: expect.any(String) }),
@@ -205,30 +209,36 @@ describe('Documents (e2e)', () => {
   });
 
   // --- Build order item 2: Security Clearance — real Puppeteer PDF --------
+  // Security Clearance/AWB Sticker/CDN are Executive-only (direct request)
+  // — every request in this describe block uses executiveToken, never
+  // managerToken, on purpose.
   describe('Security Clearance (real PDF via the worker)', () => {
     it('issues and produces a downloadable stored PDF', async () => {
       const shipmentId = await createShipment();
       await enterCargo(shipmentId);
       await request(server)
         .post(`/api/v1/shipments/${shipmentId}/documents/SECURITY_CLEARANCE`)
-        .set('Authorization', `Bearer ${managerToken}`);
+        .set('Authorization', `Bearer ${executiveToken}`);
       await request(server)
         .patch(`/api/v1/shipments/${shipmentId}/documents/SECURITY_CLEARANCE`)
-        .set('Authorization', `Bearer ${managerToken}`)
+        .set('Authorization', `Bearer ${executiveToken}`)
         .send({
-          fieldData: { fullName: 'S.M Liyanage', designation: 'Manager', nic: '800602017V' },
+          // fullName/designation/nic are no longer manual fieldData — they're
+          // auto-populated from the preparer's account/Profile (viewModel).
+          // Only the handover/taken-charge officer's own fields stay manual.
+          fieldData: { handoverEmployeeName: 'S.M Liyanage', handoverNic: '800602017V' },
         });
 
       const issued = await request(server)
         .post(`/api/v1/shipments/${shipmentId}/documents/SECURITY_CLEARANCE/issue`)
-        .set('Authorization', `Bearer ${managerToken}`);
+        .set('Authorization', `Bearer ${executiveToken}`);
       expect(issued.status).toBe(201);
       expect(issued.body.status).toBe('ISSUED');
       expect(issued.body.hasStoredFile).toBe(true);
 
       const download = await request(server)
         .get(`/api/v1/documents/${issued.body.id}/file`)
-        .set('Authorization', `Bearer ${managerToken}`);
+        .set('Authorization', `Bearer ${executiveToken}`);
       expect(download.status).toBe(200);
       expect(download.headers['content-type']).toContain('application/pdf');
       // %PDF- magic bytes confirm this is a genuine rendered PDF, not a stub.
@@ -240,15 +250,15 @@ describe('Documents (e2e)', () => {
       await enterCargo(shipmentId);
       await request(server)
         .post(`/api/v1/shipments/${shipmentId}/documents/SECURITY_CLEARANCE`)
-        .set('Authorization', `Bearer ${managerToken}`);
+        .set('Authorization', `Bearer ${executiveToken}`);
       await request(server)
         .post(`/api/v1/shipments/${shipmentId}/documents/SECURITY_CLEARANCE/issue`)
-        .set('Authorization', `Bearer ${managerToken}`);
+        .set('Authorization', `Bearer ${executiveToken}`);
 
       const editAttempt = await request(server)
         .patch(`/api/v1/shipments/${shipmentId}/documents/SECURITY_CLEARANCE`)
-        .set('Authorization', `Bearer ${managerToken}`)
-        .send({ fieldData: { fullName: 'too late' } });
+        .set('Authorization', `Bearer ${executiveToken}`)
+        .send({ fieldData: { handoverEmployeeName: 'too late' } });
       expect(editAttempt.status).toBe(423);
     }, 30_000);
 
@@ -257,21 +267,21 @@ describe('Documents (e2e)', () => {
       await enterCargo(shipmentId);
       await request(server)
         .post(`/api/v1/shipments/${shipmentId}/documents/SECURITY_CLEARANCE`)
-        .set('Authorization', `Bearer ${managerToken}`);
+        .set('Authorization', `Bearer ${executiveToken}`);
       const issuedV1 = await request(server)
         .post(`/api/v1/shipments/${shipmentId}/documents/SECURITY_CLEARANCE/issue`)
-        .set('Authorization', `Bearer ${managerToken}`);
+        .set('Authorization', `Bearer ${executiveToken}`);
       expect(issuedV1.body.version).toBe(1);
 
       const shipmentEdit = await request(server)
         .patch(`/api/v1/shipments/${shipmentId}`)
-        .set('Authorization', `Bearer ${managerToken}`)
+        .set('Authorization', `Bearer ${executiveToken}`)
         .send({ version: 1, cusdecNo: 'CUS-CHANGED' });
       expect(shipmentEdit.status).toBe(200);
 
       const latest = await request(server)
         .get(`/api/v1/shipments/${shipmentId}/documents/SECURITY_CLEARANCE`)
-        .set('Authorization', `Bearer ${managerToken}`);
+        .set('Authorization', `Bearer ${executiveToken}`);
       expect(latest.body.version).toBe(2);
       expect(latest.body.status).toBe('DRAFT');
 
@@ -281,101 +291,194 @@ describe('Documents (e2e)', () => {
       expect(v1Row.status).toBe('ISSUED');
     }, 30_000);
 
-    // PRD §4's permission matrix gives all three roles some document access
-    // (Executive/Manager full, Director read-only) — there is no authenticated
-    // role with zero access to test a 403 against. The real "direct-URL
-    // attempt" case DEVELOPMENT_PLAN.md's Tests line means is unauthenticated.
-    it('a direct file-URL attempt with no token at all is rejected', async () => {
+    it('a direct file-URL attempt with no token at all is rejected; Manager/Director have zero access to this type', async () => {
       const shipmentId = await createShipment();
       await enterCargo(shipmentId);
       await request(server)
         .post(`/api/v1/shipments/${shipmentId}/documents/SECURITY_CLEARANCE`)
-        .set('Authorization', `Bearer ${managerToken}`);
+        .set('Authorization', `Bearer ${executiveToken}`);
       const issued = await request(server)
         .post(`/api/v1/shipments/${shipmentId}/documents/SECURITY_CLEARANCE/issue`)
-        .set('Authorization', `Bearer ${managerToken}`);
+        .set('Authorization', `Bearer ${executiveToken}`);
 
       const res = await request(server).get(`/api/v1/documents/${issued.body.id}/file`);
       expect(res.status).toBe(401);
 
-      // Director (read-only) CAN retrieve it — confirming the endpoint is
-      // permission-checked, not merely unauthenticated-blocked.
+      // Neither Manager's documents.manage nor Director's
+      // documents.view.readonly cover this Executive-only type.
+      const managerRes = await request(server)
+        .get(`/api/v1/documents/${issued.body.id}/file`)
+        .set('Authorization', `Bearer ${managerToken}`);
+      expect(managerRes.status).toBe(403);
+
       const directorRes = await request(server)
         .get(`/api/v1/documents/${issued.body.id}/file`)
         .set('Authorization', `Bearer ${directorToken}`);
-      expect(directorRes.status).toBe(200);
+      expect(directorRes.status).toBe(403);
     }, 30_000);
   });
 
-  // --- Build order item 3: ADF — no issue/print route at all (AC-20) ------
-  describe('ADF (BR-63, no print path)', () => {
-    it('supports create/edit but rejects issue and print', async () => {
+  // --- Direct request: Security Clearance/AWB Sticker/CDN are Executive-only, full stop ---
+  describe.each(['SECURITY_CLEARANCE', 'AWB_STICKER', 'CDN'] as const)(
+    '%s is Executive-only',
+    (type) => {
+      it('Manager (documents.manage) cannot create, view, or edit this type', async () => {
+        const shipmentId = await createShipment();
+        await enterCargo(shipmentId);
+
+        const createAttempt = await request(server)
+          .post(`/api/v1/shipments/${shipmentId}/documents/${type}`)
+          .set('Authorization', `Bearer ${managerToken}`);
+        expect(createAttempt.status).toBe(403);
+
+        const created = await request(server)
+          .post(`/api/v1/shipments/${shipmentId}/documents/${type}`)
+          .set('Authorization', `Bearer ${executiveToken}`);
+        expect(created.status).toBe(201);
+
+        const getAttempt = await request(server)
+          .get(`/api/v1/shipments/${shipmentId}/documents/${type}`)
+          .set('Authorization', `Bearer ${managerToken}`);
+        expect(getAttempt.status).toBe(403);
+
+        const editAttempt = await request(server)
+          .patch(`/api/v1/shipments/${shipmentId}/documents/${type}`)
+          .set('Authorization', `Bearer ${managerToken}`)
+          .send({ fieldData: {} });
+        expect(editAttempt.status).toBe(403);
+
+        const issueAttempt = await request(server)
+          .post(`/api/v1/shipments/${shipmentId}/documents/${type}/issue`)
+          .set('Authorization', `Bearer ${managerToken}`);
+        expect(issueAttempt.status).toBe(403);
+      });
+
+      it('Director (documents.view.readonly) cannot even view this type', async () => {
+        const shipmentId = await createShipment();
+        await enterCargo(shipmentId);
+        await request(server)
+          .post(`/api/v1/shipments/${shipmentId}/documents/${type}`)
+          .set('Authorization', `Bearer ${executiveToken}`);
+
+        const getAttempt = await request(server)
+          .get(`/api/v1/shipments/${shipmentId}/documents/${type}`)
+          .set('Authorization', `Bearer ${directorToken}`);
+        expect(getAttempt.status).toBe(403);
+      });
+    },
+  );
+
+  // --- Build order items 3 & 4: ADF and AWB are now upload-only, not generated ---
+  // CUSDEC (added later) reuses the exact same upload-only infrastructure.
+  const UPLOAD_PDF_BYTES = Buffer.from('%PDF-1.4\n%fake ADF/AWB/CUSDEC for e2e testing\n');
+  const NOT_A_PDF_BYTES = Buffer.from('this is not actually a pdf file');
+
+  describe.each(['ADF', 'AWB', 'CUSDEC'] as const)('%s (upload-only document)', (type) => {
+    it('rejects the generate/edit/issue/print routes — those apply to generated types only', async () => {
       const shipmentId = await createShipment();
       await enterCargo(shipmentId);
 
-      const created = await request(server)
-        .post(`/api/v1/shipments/${shipmentId}/documents/ADF`)
+      const createAttempt = await request(server)
+        .post(`/api/v1/shipments/${shipmentId}/documents/${type}`)
         .set('Authorization', `Bearer ${managerToken}`);
-      expect(created.status).toBe(201);
-      expect(created.body.viewModel.awbNo).toBeDefined();
-
-      const updated = await request(server)
-        .patch(`/api/v1/shipments/${shipmentId}/documents/ADF`)
-        .set('Authorization', `Bearer ${managerToken}`)
-        .send({ fieldData: { shipperTel: '0760120210', totalCbm: '3.5' } });
-      expect(updated.status).toBe(200);
+      expect(createAttempt.status).toBe(422);
 
       const issueAttempt = await request(server)
-        .post(`/api/v1/shipments/${shipmentId}/documents/ADF/issue`)
+        .post(`/api/v1/shipments/${shipmentId}/documents/${type}/issue`)
         .set('Authorization', `Bearer ${managerToken}`);
       expect(issueAttempt.status).toBe(422);
 
       const printAttempt = await request(server)
-        .get(`/api/v1/shipments/${shipmentId}/documents/ADF/print`)
+        .get(`/api/v1/shipments/${shipmentId}/documents/${type}/print`)
         .set('Authorization', `Bearer ${managerToken}`);
       expect(printAttempt.status).toBe(422);
     });
-  });
 
-  // --- Build order item 4: AWB — carrier IATA format -----------------------
-  describe('AWB (carrier IATA format)', () => {
-    it('populates from the shipment and issues a real stored PDF', async () => {
+    it('uploads a PDF as version 1, ISSUED immediately, with a stored file', async () => {
       const shipmentId = await createShipment();
       await enterCargo(shipmentId);
-      const created = await request(server)
-        .post(`/api/v1/shipments/${shipmentId}/documents/AWB`)
+
+      const uploaded = await request(server)
+        .post(`/api/v1/shipments/${shipmentId}/documents/${type}/upload`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .attach('file', UPLOAD_PDF_BYTES, { filename: 'doc.pdf', contentType: 'application/pdf' });
+
+      expect(uploaded.status).toBe(201);
+      expect(uploaded.body.version).toBe(1);
+      expect(uploaded.body.status).toBe('ISSUED');
+      expect(uploaded.body.hasStoredFile).toBe(true);
+
+      const fileRes = await request(server)
+        .get(`/api/v1/documents/${uploaded.body.id}/file`)
         .set('Authorization', `Bearer ${managerToken}`);
-      expect(created.body.viewModel.commodityName).toBe(`E2E Commodity doc${RUN_ID}`);
+      expect(fileRes.status).toBe(200);
+    });
+
+    it('rejects a non-PDF upload', async () => {
+      const shipmentId = await createShipment();
+      await enterCargo(shipmentId);
+
+      const res = await request(server)
+        .post(`/api/v1/shipments/${shipmentId}/documents/${type}/upload`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .attach('file', NOT_A_PDF_BYTES, { filename: 'doc.pdf', contentType: 'application/pdf' });
+
+      expect(res.status).toBe(422);
+    });
+
+    it('replacing the file creates a new version rather than overwriting', async () => {
+      const shipmentId = await createShipment();
+      await enterCargo(shipmentId);
 
       await request(server)
-        .patch(`/api/v1/shipments/${shipmentId}/documents/AWB`)
+        .post(`/api/v1/shipments/${shipmentId}/documents/${type}/upload`)
         .set('Authorization', `Bearer ${managerToken}`)
-        .send({ fieldData: { agentIataCode: '0772418', shcCodes: 'COL,PES,QRT,EAP,ECC' } });
+        .attach('file', UPLOAD_PDF_BYTES, { filename: 'doc.pdf', contentType: 'application/pdf' });
 
-      const issued = await request(server)
-        .post(`/api/v1/shipments/${shipmentId}/documents/AWB/issue`)
+      const second = await request(server)
+        .post(`/api/v1/shipments/${shipmentId}/documents/${type}/upload`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .attach('file', UPLOAD_PDF_BYTES, { filename: 'doc-v2.pdf', contentType: 'application/pdf' });
+
+      expect(second.status).toBe(201);
+      expect(second.body.version).toBe(2);
+
+      const latest = await request(server)
+        .get(`/api/v1/shipments/${shipmentId}/documents/${type}`)
         .set('Authorization', `Bearer ${managerToken}`);
-      expect(issued.status).toBe(201);
-      expect(issued.body.hasStoredFile).toBe(true);
-    }, 30_000);
+      expect(latest.body.version).toBe(2);
+    });
+
+    it('Director cannot upload (no documents.manage)', async () => {
+      const shipmentId = await createShipment();
+      await enterCargo(shipmentId);
+
+      const res = await request(server)
+        .post(`/api/v1/shipments/${shipmentId}/documents/${type}/upload`)
+        .set('Authorization', `Bearer ${directorToken}`)
+        .attach('file', UPLOAD_PDF_BYTES, { filename: 'doc.pdf', contentType: 'application/pdf' });
+
+      expect(res.status).toBe(403);
+    });
   });
 
   // --- Build order item 5: CDN — statutory SLPA format, hardest -----------
+  // Security Clearance/AWB Sticker/CDN are Executive-only (direct request).
   describe('CDN (statutory SLPA format)', () => {
     it('populates from the shipment and issues a real stored PDF', async () => {
       const shipmentId = await createShipment();
       await enterCargo(shipmentId);
       await request(server)
         .post(`/api/v1/shipments/${shipmentId}/documents/CDN`)
-        .set('Authorization', `Bearer ${managerToken}`);
+        .set('Authorization', `Bearer ${executiveToken}`);
       await request(server)
         .patch(`/api/v1/shipments/${shipmentId}/documents/CDN`)
-        .set('Authorization', `Bearer ${managerToken}`)
+        .set('Authorization', `Bearer ${executiveToken}`)
         .send({ fieldData: { lorryTrailerNo: 'ABC-1234', declarantName: 'Dulanjana Madushan' } });
 
       const issued = await request(server)
         .post(`/api/v1/shipments/${shipmentId}/documents/CDN/issue`)
-        .set('Authorization', `Bearer ${managerToken}`);
+        .set('Authorization', `Bearer ${executiveToken}`);
       expect(issued.status).toBe(201);
       expect(issued.body.hasStoredFile).toBe(true);
     }, 30_000);
@@ -386,10 +489,10 @@ describe('Documents (e2e)', () => {
     await enterCargo(shipmentId);
     await request(server)
       .post(`/api/v1/shipments/${shipmentId}/documents/AWB_STICKER`)
-      .set('Authorization', `Bearer ${managerToken}`);
+      .set('Authorization', `Bearer ${executiveToken}`);
     const issued = await request(server)
       .post(`/api/v1/shipments/${shipmentId}/documents/AWB_STICKER/issue`)
-      .set('Authorization', `Bearer ${managerToken}`);
+      .set('Authorization', `Bearer ${executiveToken}`);
 
     const auditRow = await prisma.auditLog.findFirst({
       where: {
@@ -410,7 +513,7 @@ describe('Documents (e2e)', () => {
     await enterCargo(shipmentId);
     await request(server)
       .post(`/api/v1/shipments/${shipmentId}/documents/SECURITY_CLEARANCE`)
-      .set('Authorization', `Bearer ${managerToken}`);
+      .set('Authorization', `Bearer ${executiveToken}`);
 
     await prisma.shipment.update({
       where: { id: shipmentId },
@@ -419,7 +522,7 @@ describe('Documents (e2e)', () => {
 
     const printAttempt = await request(server)
       .get(`/api/v1/shipments/${shipmentId}/documents/SECURITY_CLEARANCE/print`)
-      .set('Authorization', `Bearer ${managerToken}`);
+      .set('Authorization', `Bearer ${executiveToken}`);
     expect(printAttempt.status).toBe(422);
     expect(printAttempt.body.error.message).toBe(
       'Cannot generate document. Please enter Box and Weight information.',
@@ -434,15 +537,15 @@ describe('Documents (e2e)', () => {
     await enterCargo(shipmentId);
     await request(server)
       .post(`/api/v1/shipments/${shipmentId}/documents/AWB_STICKER`)
-      .set('Authorization', `Bearer ${managerToken}`);
+      .set('Authorization', `Bearer ${executiveToken}`);
 
     const [first, second] = await Promise.all([
       request(server)
         .post(`/api/v1/shipments/${shipmentId}/documents/AWB_STICKER/issue`)
-        .set('Authorization', `Bearer ${managerToken}`),
+        .set('Authorization', `Bearer ${executiveToken}`),
       request(server)
         .post(`/api/v1/shipments/${shipmentId}/documents/AWB_STICKER/issue`)
-        .set('Authorization', `Bearer ${managerToken}`),
+        .set('Authorization', `Bearer ${executiveToken}`),
     ]);
 
     const statuses = [first.status, second.status].sort();

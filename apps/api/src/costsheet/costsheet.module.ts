@@ -5,7 +5,7 @@ import { CostSheetService } from './costsheet.service';
 
 @Module({
   // IdentityModule exports PermissionsService — CostSheetService#update
-  // needs it for the state-dependent costsheet.edit_released check.
+  // needs it for the state-dependent costsheet.edit_approved check.
   imports: [IdentityModule],
   controllers: [CostSheetController],
   providers: [CostSheetService],

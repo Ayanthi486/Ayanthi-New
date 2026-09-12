@@ -17,6 +17,7 @@ import {
   useUpdateInvoice,
 } from '@/features/invoice/hooks/useInvoice';
 import { ApiClientError } from '@/lib/apiClient';
+import { escapeHtml } from '@/lib/utils';
 
 const WEIGHT_BASIS_LABELS: Record<InvoiceLineWeightBasis, string> = {
   CHARGEABLE: 'Chargeable Wt',
@@ -26,10 +27,53 @@ const WEIGHT_BASIS_LABELS: Record<InvoiceLineWeightBasis, string> = {
 
 const selectClassName = 'border-input h-9 rounded-md border bg-transparent px-3 text-sm';
 
-/** PRD §5.4/§6/§8/§9, CONTEXT.md §13: Manager-owned, dual currency, create -> edit -> issue. Mirrors CostSheetSection/CargoSection's placement on ShipmentViewPage. */
+function printInvoice(invoice: Invoice): void {
+  const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+  if (!printWindow) return;
+
+  const rows = invoice.lines
+    .map(
+      (line) =>
+        `<tr><td>${escapeHtml(line.description)}</td><td>${escapeHtml(WEIGHT_BASIS_LABELS[line.weightBasis])}</td><td style="text-align:right">${escapeHtml(line.rateUsd)}</td></tr>`,
+    )
+    .join('');
+
+  printWindow.document.write(`
+    <html>
+      <head>
+        <title>Invoice ${escapeHtml(invoice.invoiceNo ?? '')}</title>
+        <style>
+          body { font-family: sans-serif; padding: 2rem; color: #111; }
+          table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+          td, th { border: 1px solid #ccc; padding: 0.5rem; text-align: left; }
+          h1 { margin-bottom: 0.25rem; }
+        </style>
+      </head>
+      <body>
+        <h1>Invoice ${escapeHtml(invoice.invoiceNo || '(no number)')}</h1>
+        <p>Date: ${escapeHtml(invoice.invoiceDate ?? '—')}</p>
+        <p>AWB Number: ${escapeHtml(invoice.awbNumber ?? '—')}</p>
+        <p>Shipper: ${escapeHtml(invoice.shipperName ?? '—')}</p>
+        <p>Consignee: ${escapeHtml(invoice.consigneeName ?? '—')}</p>
+        <table>
+          <thead><tr><th>Description</th><th>Weight basis</th><th>Rate (USD)</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <p><strong>Total USD: ${escapeHtml(invoice.totalUsd)}</strong></p>
+        <p><strong>Total LKR: ${escapeHtml(invoice.totalLkr)}</strong></p>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.print();
+}
+
+/** PRD §5.4/§6/§8/§9, CONTEXT.md §13: Manager-owned, dual currency, create -> edit -> issue. Rendered as one tab pane ("Freight Invoice") inside DocumentsSection.tsx's unified tab bar — no card/heading of its own. */
 export function InvoiceSection({ shipmentId }: { shipmentId: string }) {
   const invoiceQuery = useInvoice(shipmentId);
   const createMutation = useCreateInvoice(shipmentId);
+  const [confirmingCreate, setConfirmingCreate] = useState(false);
 
   const notFound =
     invoiceQuery.isError &&
@@ -37,10 +81,9 @@ export function InvoiceSection({ shipmentId }: { shipmentId: string }) {
     invoiceQuery.error.status === 404;
 
   return (
-    <div className="border-border bg-card rounded-lg border p-6">
-      <h2 className="font-medium">Invoice</h2>
-      <p className="text-muted-foreground mt-1 text-sm">
-        Customer selling charges, dual currency LKR/USD (BR-27, BR-40).
+    <div>
+      <p className="text-muted-foreground text-sm">
+        Customer selling charges, dual currency LKR/USD.
       </p>
 
       {invoiceQuery.isLoading && <p className="text-muted-foreground mt-4 text-sm">Loading…</p>}
@@ -49,13 +92,28 @@ export function InvoiceSection({ shipmentId }: { shipmentId: string }) {
         <div className="mt-4">
           <p className="text-muted-foreground text-sm">No Invoice has been created yet.</p>
           <RequirePermission permission="invoice.manage">
-            <Button
-              className="mt-2"
-              disabled={createMutation.isPending}
-              onClick={() => createMutation.mutate({ shipmentId })}
-            >
-              {createMutation.isPending ? 'Creating…' : 'Create Invoice'}
-            </Button>
+            {confirmingCreate ? (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-sm">Create an Invoice?</span>
+                <Button
+                  disabled={createMutation.isPending}
+                  onClick={() => createMutation.mutate({ shipmentId })}
+                >
+                  {createMutation.isPending ? 'Creating…' : 'Confirm'}
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={createMutation.isPending}
+                  onClick={() => setConfirmingCreate(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <Button className="mt-2" onClick={() => setConfirmingCreate(true)}>
+                Create Invoice
+              </Button>
+            )}
           </RequirePermission>
         </div>
       )}
@@ -78,10 +136,19 @@ export function InvoiceSection({ shipmentId }: { shipmentId: string }) {
   );
 }
 
+function linesFromInvoice(invoice: Invoice): InvoiceLineInput[] {
+  return invoice.lines.map((line) => ({
+    description: line.description,
+    weightBasis: line.weightBasis,
+    rateUsd: line.rateUsd,
+  }));
+}
+
 function InvoiceDetail({ shipmentId, invoice }: { shipmentId: string; invoice: Invoice }) {
   const updateMutation = useUpdateInvoice(shipmentId);
   const issueMutation = useIssueInvoice(shipmentId);
 
+  const [isEditing, setIsEditing] = useState(false);
   const [invoiceNo, setInvoiceNo] = useState(invoice.invoiceNo ?? '');
   const [invoiceDate, setInvoiceDate] = useState(invoice.invoiceDate ?? '');
   const [exchangeRate, setExchangeRate] = useState(invoice.exchangeRate ?? '');
@@ -89,15 +156,29 @@ function InvoiceDetail({ shipmentId, invoice }: { shipmentId: string; invoice: I
     invoice.termDays !== null ? String(invoice.termDays) : '',
   );
   const [chargeableWeightKg, setChargeableWeightKg] = useState(invoice.chargeableWeightKg ?? '');
-  const [lines, setLines] = useState<InvoiceLineInput[]>(() =>
-    invoice.lines.map((line) => ({
-      description: line.description,
-      weightBasis: line.weightBasis,
-      rateUsd: line.rateUsd,
-    })),
-  );
+  const [lines, setLines] = useState<InvoiceLineInput[]>(() => linesFromInvoice(invoice));
 
   const isIssued = invoice.status === 'ISSUED';
+  const fieldsDisabled = isIssued || !isEditing;
+
+  const resetFields = () => {
+    setInvoiceNo(invoice.invoiceNo ?? '');
+    setInvoiceDate(invoice.invoiceDate ?? '');
+    setExchangeRate(invoice.exchangeRate ?? '');
+    setTermDays(invoice.termDays !== null ? String(invoice.termDays) : '');
+    setChargeableWeightKg(invoice.chargeableWeightKg ?? '');
+    setLines(linesFromInvoice(invoice));
+  };
+
+  const handleEdit = () => {
+    resetFields();
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    resetFields();
+    setIsEditing(false);
+  };
 
   const updateLine = (index: number, changes: Partial<InvoiceLineInput>) => {
     setLines((prev) => prev.map((line, i) => (i === index ? { ...line, ...changes } : line)));
@@ -123,18 +204,21 @@ function InvoiceDetail({ shipmentId, invoice }: { shipmentId: string; invoice: I
   };
 
   const handleSave = () => {
-    updateMutation.mutate({
-      id: invoice.id,
-      input: {
-        version: invoice.version,
-        invoiceNo: invoiceNo || undefined,
-        invoiceDate: invoiceDate || undefined,
-        exchangeRate: exchangeRate || undefined,
-        termDays: termDays ? Number(termDays) : undefined,
-        chargeableWeightKg: chargeableWeightKg || undefined,
-        lines: lines.length > 0 ? lines : undefined,
+    updateMutation.mutate(
+      {
+        id: invoice.id,
+        input: {
+          version: invoice.version,
+          invoiceNo: invoiceNo || undefined,
+          invoiceDate: invoiceDate || undefined,
+          exchangeRate: exchangeRate || undefined,
+          termDays: termDays ? Number(termDays) : undefined,
+          chargeableWeightKg: chargeableWeightKg || undefined,
+          lines: lines.length > 0 ? lines : undefined,
+        },
       },
-    });
+      { onSuccess: () => setIsEditing(false) },
+    );
   };
 
   const handleIssue = () => {
@@ -175,7 +259,7 @@ function InvoiceDetail({ shipmentId, invoice }: { shipmentId: string; invoice: I
           <Input
             id="inv-invoiceNo"
             value={invoiceNo}
-            disabled={isIssued}
+            disabled={fieldsDisabled}
             onChange={(e) => setInvoiceNo(e.target.value)}
           />
         </div>
@@ -185,7 +269,7 @@ function InvoiceDetail({ shipmentId, invoice }: { shipmentId: string; invoice: I
             id="inv-invoiceDate"
             type="date"
             value={invoiceDate}
-            disabled={isIssued}
+            disabled={fieldsDisabled}
             onChange={(e) => setInvoiceDate(e.target.value)}
           />
         </div>
@@ -195,7 +279,7 @@ function InvoiceDetail({ shipmentId, invoice }: { shipmentId: string; invoice: I
             id="inv-term"
             inputMode="numeric"
             value={termDays}
-            disabled={isIssued}
+            disabled={fieldsDisabled}
             onChange={(e) => setTermDays(e.target.value)}
           />
         </div>
@@ -205,7 +289,7 @@ function InvoiceDetail({ shipmentId, invoice }: { shipmentId: string; invoice: I
             id="inv-exchangeRate"
             inputMode="decimal"
             value={exchangeRate}
-            disabled={isIssued}
+            disabled={fieldsDisabled}
             onChange={(e) => setExchangeRate(e.target.value)}
           />
         </div>
@@ -215,7 +299,7 @@ function InvoiceDetail({ shipmentId, invoice }: { shipmentId: string; invoice: I
             id="inv-chargeableWt"
             inputMode="decimal"
             value={chargeableWeightKg}
-            disabled={isIssued}
+            disabled={fieldsDisabled}
             onChange={(e) => setChargeableWeightKg(e.target.value)}
           />
         </div>
@@ -234,7 +318,7 @@ function InvoiceDetail({ shipmentId, invoice }: { shipmentId: string; invoice: I
               <Input
                 id={`inv-line-desc-${index}`}
                 value={line.description}
-                disabled={isIssued}
+                disabled={fieldsDisabled}
                 onChange={(e) => updateLine(index, { description: e.target.value })}
               />
             </div>
@@ -244,7 +328,7 @@ function InvoiceDetail({ shipmentId, invoice }: { shipmentId: string; invoice: I
                 id={`inv-line-basis-${index}`}
                 className={selectClassName}
                 value={line.weightBasis}
-                disabled={isIssued}
+                disabled={fieldsDisabled}
                 onChange={(e) =>
                   updateLine(index, { weightBasis: e.target.value as InvoiceLineWeightBasis })
                 }
@@ -262,11 +346,11 @@ function InvoiceDetail({ shipmentId, invoice }: { shipmentId: string; invoice: I
                 id={`inv-line-rate-${index}`}
                 inputMode="decimal"
                 value={line.rateUsd}
-                disabled={isIssued}
+                disabled={fieldsDisabled}
                 onChange={(e) => updateLine(index, { rateUsd: e.target.value })}
               />
             </div>
-            {!isIssued && (
+            {!isIssued && isEditing && (
               <div className="flex gap-1">
                 <Button
                   type="button"
@@ -291,7 +375,7 @@ function InvoiceDetail({ shipmentId, invoice }: { shipmentId: string; invoice: I
             )}
           </div>
         ))}
-        {!isIssued && (
+        {!isIssued && isEditing && (
           <Button type="button" variant="outline" className="w-fit" onClick={addLine}>
             Add line
           </Button>
@@ -317,11 +401,30 @@ function InvoiceDetail({ shipmentId, invoice }: { shipmentId: string; invoice: I
       </div>
 
       <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={() => printInvoice(invoice)}>
+          Print
+        </Button>
+
         {!isIssued && (
           <RequirePermission permission="invoice.manage">
-            <Button variant="outline" disabled={updateMutation.isPending} onClick={handleSave}>
-              {updateMutation.isPending ? 'Saving…' : 'Save'}
-            </Button>
+            {isEditing ? (
+              <>
+                <Button
+                  variant="outline"
+                  disabled={updateMutation.isPending}
+                  onClick={handleCancelEdit}
+                >
+                  Cancel
+                </Button>
+                <Button disabled={updateMutation.isPending} onClick={handleSave}>
+                  {updateMutation.isPending ? 'Saving…' : 'Save'}
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" onClick={handleEdit}>
+                Edit
+              </Button>
+            )}
           </RequirePermission>
         )}
         {!isIssued && (

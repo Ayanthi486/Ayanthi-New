@@ -1,6 +1,11 @@
 import { z } from 'zod';
 
-/** BR-59/60/61: Executive prepares/releases, Manager edits after release and approves. */
+/**
+ * BR-59/60/61: Executive prepares, signs, and releases; Manager reviews,
+ * edits, and approves. Direct request: Executive can still edit after
+ * release, but loses edit access entirely once Approved — only Manager can
+ * edit an Approved Cost Sheet.
+ */
 export const COST_SHEET_STATUSES = ['DRAFT', 'RELEASED', 'APPROVED'] as const;
 export type CostSheetStatus = (typeof COST_SHEET_STATUSES)[number];
 

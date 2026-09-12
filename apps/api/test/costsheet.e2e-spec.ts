@@ -81,6 +81,7 @@ describe('Cost Sheet (e2e)', () => {
         consigneeId: masterData.consigneeId,
         commodityId: masterData.commodityId,
         destinationAirportId: masterData.airportId,
+        serviceType: 'BOOKING_AND_HANDLING',
         flightNo: 'EK123',
         mawbNo: '176-0000-0001',
         flightDate: colomboToday(),
@@ -187,7 +188,7 @@ describe('Cost Sheet (e2e)', () => {
       expect(managerApproveBeforeRelease.status).toBe(422);
     });
 
-    it('Executive releases; Manager edits after release; Executive cannot edit after release', async () => {
+    it('Executive releases; both Executive and Manager can edit after release', async () => {
       const shipmentId = await createShipment(executiveToken);
       const costSheet = await createCostSheet(executiveToken, shipmentId);
 
@@ -200,13 +201,14 @@ describe('Cost Sheet (e2e)', () => {
       const executiveEdit = await request(server)
         .patch(`/api/v1/costsheets/${costSheet.id}`)
         .set('Authorization', `Bearer ${executiveToken}`)
-        .send({ version: 0, remarks: 'Executive trying to edit after release' });
-      expect(executiveEdit.status).toBe(403);
+        .send({ version: 0, remarks: 'Executive correction after release' });
+      expect(executiveEdit.status).toBe(200);
+      expect(executiveEdit.body.remarks).toBe('Executive correction after release');
 
       const managerEdit = await request(server)
         .patch(`/api/v1/costsheets/${costSheet.id}`)
         .set('Authorization', `Bearer ${managerToken}`)
-        .send({ version: 0, remarks: 'Manager correction after release' });
+        .send({ version: 1, remarks: 'Manager correction after release' });
       expect(managerEdit.status).toBe(200);
       expect(managerEdit.body.remarks).toBe('Manager correction after release');
     });
@@ -234,7 +236,7 @@ describe('Cost Sheet (e2e)', () => {
       expect((auditRow?.after as { status: string } | null)?.status).toBe('APPROVED');
     });
 
-    it('an Approved Cost Sheet rejects further edits (423)', async () => {
+    it('an Approved Cost Sheet rejects Executive edits (423) but Manager can still edit', async () => {
       const shipmentId = await createShipment(executiveToken);
       const costSheet = await createCostSheet(executiveToken, shipmentId);
       await request(server)
@@ -244,11 +246,18 @@ describe('Cost Sheet (e2e)', () => {
         .post(`/api/v1/costsheets/${costSheet.id}/approve`)
         .set('Authorization', `Bearer ${managerToken}`);
 
-      const editRes = await request(server)
+      const executiveEdit = await request(server)
+        .patch(`/api/v1/costsheets/${costSheet.id}`)
+        .set('Authorization', `Bearer ${executiveToken}`)
+        .send({ version: 0, remarks: 'too late' });
+      expect(executiveEdit.status).toBe(423);
+
+      const managerEdit = await request(server)
         .patch(`/api/v1/costsheets/${costSheet.id}`)
         .set('Authorization', `Bearer ${managerToken}`)
-        .send({ version: 0, remarks: 'too late' });
-      expect(editRes.status).toBe(423);
+        .send({ version: 0, remarks: 'Manager correction after approval' });
+      expect(managerEdit.status).toBe(200);
+      expect(managerEdit.body.remarks).toBe('Manager correction after approval');
     });
   });
 

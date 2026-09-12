@@ -81,10 +81,15 @@ const editShipment: Shipment = {
   destinationAirportCode: 'DXB',
   shipperId: 'shipper-1',
   shipperName: 'Acme Exports',
+  shipperAddress: null,
+  shipperContact: null,
   consigneeId: 'consignee-1',
   consigneeName: 'Acme Imports',
+  consigneeAddress: null,
+  consigneeContact: null,
   commodityId: 'commodity-1',
   commodityName: 'Edible Fish',
+  serviceType: 'BOOKING_AND_HANDLING',
   flightDate: '2026-06-15',
   handlingDate: '2026-06-14',
   depTime: '03:05',
@@ -149,6 +154,7 @@ function setManagerPermissions() {
       roles: ['Manager'],
       permissions: ['masterdata.manage', ...BROADER_CREATE_PERMISSIONS],
       hasAvatar: false,
+      idCardNo: null,
     },
     permissions: new Set(['masterdata.manage', ...BROADER_CREATE_PERMISSIONS]),
     accessToken: 'token',
@@ -166,6 +172,7 @@ function setExecutivePermissions() {
       roles: ['Executive'],
       permissions: [...BROADER_CREATE_PERMISSIONS],
       hasAvatar: false,
+      idCardNo: null,
     },
     permissions: new Set(BROADER_CREATE_PERMISSIONS),
     accessToken: 'token',
@@ -234,6 +241,15 @@ const FIELD_STEPS: { key: string; label: string; run: () => void | Promise<void>
     label: 'COMMODITY',
     run: () => selectFromCombobox('COMMODITY', 'Edible Fish', /Edible Fish/),
   },
+  {
+    key: 'serviceType',
+    label: 'SERVICE TYPE',
+    run: () => {
+      fireEvent.change(screen.getByLabelText('SERVICE TYPE'), {
+        target: { value: 'BOOKING_AND_HANDLING' },
+      });
+    },
+  },
 ];
 
 async function fillAllExcept(skipKey?: string) {
@@ -273,6 +289,7 @@ describe('ShipmentForm', () => {
       expect(screen.getByLabelText('SHIPPER')).toBeInTheDocument();
       expect(screen.getByLabelText('CONSIGNEE')).toBeInTheDocument();
       expect(screen.getByLabelText('COMMODITY')).toBeInTheDocument();
+      expect(screen.getByLabelText('SERVICE TYPE')).toBeInTheDocument();
 
       // Not shown on the initial form at all (system-generated/computed).
       expect(screen.queryByText('Shipment ID')).not.toBeInTheDocument();
@@ -284,7 +301,7 @@ describe('ShipmentForm', () => {
       expect(screen.queryByLabelText(/box/i)).not.toBeInTheDocument();
       expect(screen.queryByLabelText(/weight/i)).not.toBeInTheDocument();
 
-      // None of the eight are marked optional.
+      // None of the nine are marked optional.
       expect(screen.queryByText('(optional)')).not.toBeInTheDocument();
     });
 

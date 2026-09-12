@@ -3,6 +3,7 @@ import type {
   DocumentType,
   ShipmentDocument as SharedShipmentDocument,
 } from '@hub-lanka/shared';
+import { colomboToday } from '../shipment/shipment.util';
 
 type DecimalLike = { toString(): string };
 
@@ -40,31 +41,58 @@ function formatDateOnly(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+/** The preparer identity a Security Clearance certificate is signed under — never typed by hand, see buildShipmentViewModel's SECURITY_CLEARANCE case. */
+export interface DocumentActor {
+  fullName: string;
+  idCardNo: string | null;
+}
+
+/** Direct request: fixed regardless of which Executive prepares the certificate. */
+const SECURITY_CLEARANCE_DESIGNATION = 'Junior Executive';
+const SECURITY_CLEARANCE_ORGANIZATION = 'HUB Lanka (Pvt) Ltd';
+
 /**
  * BR-35 (single source of truth): the only fields each document type reads
  * from the Shipment/master-data — PRD §9's "Populated from Shipment" column,
  * field for field. Read live for DRAFT; copied into `snapshot` only at issue
  * (decision #5). Never stored a second time in `fieldData`.
+ *
+ * `actor` is only used by SECURITY_CLEARANCE, whose certification block and
+ * date fields are populated from the preparer's own account/Profile and the
+ * current date rather than typed — direct request, see
+ * securityClearanceFieldsSchema's doc comment.
  */
 export function buildShipmentViewModel(
   type: DocumentType,
   shipment: DocumentShipmentRow,
+  actor: DocumentActor,
 ): Record<string, unknown> {
   const gross = shipment.weightKg ? shipment.weightKg.toString() : null;
   const destination = shipment.destinationAirport ? shipment.destinationAirport.code : null;
 
   switch (type) {
-    case 'SECURITY_CLEARANCE':
+    case 'SECURITY_CLEARANCE': {
+      const today = colomboToday();
       return {
         awbNo: shipment.mawbNo,
         cargoDescription: shipment.commodity.name,
-        boxCount: shipment.boxCount,
-        weightKg: gross,
+        // Deliberately left blank ("keep space to enter") — not auto-filled
+        // from the shipment, unlike every other field here.
+        boxCount: null,
+        weightKg: null,
         flightNo: shipment.flightNo,
         flightDate: formatDateOnly(shipment.flightDate),
         destination,
         shipperName: shipment.shipper.name,
+        fullName: actor.fullName,
+        designation: SECURITY_CLEARANCE_DESIGNATION,
+        organizationName: SECURITY_CLEARANCE_ORGANIZATION,
+        nic: actor.idCardNo,
+        certificationDate: today,
+        handoverDate: today,
+        takenChargeDate: today,
       };
+    }
     case 'AWB_STICKER':
       return {
         // Hub Lanka operates out of Colombo — every real specimen's origin
@@ -117,6 +145,9 @@ export function buildShipmentViewModel(
         commodityName: shipment.commodity.name,
         cusdecNo: shipment.cusdecNo,
       };
+    case 'CUSDEC':
+      // Uploaded document, no template render — viewModel is never displayed.
+      return {};
   }
 }
 

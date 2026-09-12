@@ -35,6 +35,20 @@ export async function updateDocumentFields(
   });
 }
 
+/** multipart/form-data — apiClient's rawFetch skips the JSON Content-Type for a FormData body. */
+export async function uploadDocumentFile(
+  shipmentId: string,
+  type: DocumentType,
+  file: File,
+): Promise<ShipmentDocument> {
+  const form = new FormData();
+  form.set('file', file);
+  return apiFetch<ShipmentDocument>(`/shipments/${shipmentId}/documents/${type}/upload`, {
+    method: 'POST',
+    body: form,
+  });
+}
+
 export async function issueDocument(
   shipmentId: string,
   type: DocumentType,

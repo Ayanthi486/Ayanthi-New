@@ -1,14 +1,18 @@
-import { useState } from 'react';
+import { useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
 import {
-  DOCUMENT_TYPES,
   ISSUABLE_DOCUMENT_TYPES,
   PDF_DOCUMENT_TYPES,
+  UPLOAD_DOCUMENT_TYPES,
   type DocumentType,
+  type PermissionKey,
+  type ShipmentDocument,
 } from '@hub-lanka/shared';
 import { RequirePermission } from '@/app/RequirePermission';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { CostSheetSection } from '@/features/costsheet/components/CostSheetSection';
+import { AttachmentsTab } from '@/features/documents/components/AttachmentsTab';
 import {
   DOCUMENT_TAB_LABELS,
   FIELD_DATA_FIELDS,
@@ -22,52 +26,224 @@ import {
   useIssueDocument,
   usePrintDocument,
   useUpdateDocumentFields,
+  useUploadDocumentFile,
 } from '@/features/documents/hooks/useDocuments';
+import { InvoiceSection } from '@/features/invoice/components/InvoiceSection';
 import { ApiClientError } from '@/lib/apiClient';
+import { useAuthStore } from '@/lib/authStore';
 import { useToastStore } from '@/lib/toastStore';
 import { cn } from '@/lib/utils';
 
-/** CONTEXT.md §15: five tabs on the Shipment View, all keyed to Shipment ID. */
+/** One tab per non-document key, alongside the five PRD §9 document types. */
+type ExtraTabKey = 'ATTACHMENTS' | 'COST_SHEET' | 'INVOICE';
+type TabKey = DocumentType | ExtraTabKey;
+
+const DOC_VIEW_PERMISSIONS: PermissionKey[] = ['documents.manage', 'documents.view.readonly'];
+/** Direct request: Security Clearance/AWB Sticker/CDN are Executive-only — `documents.basic.manage`, held by nobody else, not the broader documents.* keys above. */
+const EXECUTIVE_ONLY_PERMISSIONS: PermissionKey[] = ['documents.basic.manage'];
+
+/**
+ * Every tab this section can show, in the exact requested order — Security
+ * Clearance, AWB Sticker, CDN, Cost Sheet, ADF, AWB, Shipment Documents,
+ * CUSDEC, Freight Invoice — with Cost Sheet/Invoice folded in alongside the
+ * PRD §9 document types instead of sitting in their own separate cards.
+ * Each tab is gated on its own permission; a viewer only ever sees the
+ * tabs they actually have access to.
+ */
+const TAB_DEFS: { key: TabKey; label: string; permissions: PermissionKey[] }[] = [
+  {
+    key: 'SECURITY_CLEARANCE',
+    label: 'Security Clearance',
+    permissions: EXECUTIVE_ONLY_PERMISSIONS,
+  },
+  { key: 'AWB_STICKER', label: 'AWB Sticker', permissions: EXECUTIVE_ONLY_PERMISSIONS },
+  { key: 'CDN', label: 'CDN', permissions: EXECUTIVE_ONLY_PERMISSIONS },
+  { key: 'COST_SHEET', label: 'Cost Sheet', permissions: ['costsheet.view'] },
+  { key: 'ADF', label: 'ADF', permissions: DOC_VIEW_PERMISSIONS },
+  { key: 'AWB', label: 'AWB', permissions: DOC_VIEW_PERMISSIONS },
+  { key: 'ATTACHMENTS', label: 'Shipment Documents', permissions: DOC_VIEW_PERMISSIONS },
+  { key: 'CUSDEC', label: 'CUSDEC', permissions: DOC_VIEW_PERMISSIONS },
+  { key: 'INVOICE', label: 'Freight Invoice', permissions: ['invoice.view', 'invoice.view.readonly'] },
+];
+
 export function DocumentsSection({ shipmentId }: { shipmentId: string }) {
-  const [activeType, setActiveType] = useState<DocumentType>('SECURITY_CLEARANCE');
+  const hasPermission = useAuthStore((state) => state.hasPermission);
   const readinessQuery = useDocumentReadiness(shipmentId);
+  const [requestedTab, setRequestedTab] = useState<TabKey | null>(null);
+
+  const visibleTabs = useMemo(
+    () => TAB_DEFS.filter((tab) => tab.permissions.some((permission) => hasPermission(permission))),
+    [hasPermission],
+  );
+
+  if (visibleTabs.length === 0) return null;
+
+  const activeTab =
+    requestedTab && visibleTabs.some((tab) => tab.key === requestedTab)
+      ? requestedTab
+      : // Safe: the `visibleTabs.length === 0` case already returned above.
+        visibleTabs[0]!.key;
+
+  let content: ReactNode;
+  if (activeTab === 'ATTACHMENTS') {
+    content = <AttachmentsTab shipmentId={shipmentId} />;
+  } else if (activeTab === 'COST_SHEET') {
+    content = <CostSheetSection shipmentId={shipmentId} />;
+  } else if (activeTab === 'INVOICE') {
+    content = <InvoiceSection shipmentId={shipmentId} />;
+  } else if (readinessQuery.isLoading) {
+    content = <p className="text-muted-foreground text-sm">Loading…</p>;
+  } else if (readinessQuery.data && !readinessQuery.data.ready) {
+    // BR-07: the exact confirmed message, never reworded.
+    content = (
+      <p className="text-destructive text-sm">
+        Cannot generate document. Please enter Box and Weight information.
+      </p>
+    );
+  } else if (readinessQuery.data?.ready) {
+    content = (UPLOAD_DOCUMENT_TYPES as readonly DocumentType[]).includes(activeTab) ? (
+      <UploadDocumentTab key={activeTab} shipmentId={shipmentId} type={activeTab} />
+    ) : (
+      <DocumentTab key={activeTab} shipmentId={shipmentId} type={activeTab} />
+    );
+  }
 
   return (
     <div className="border-border bg-card rounded-lg border p-6">
       <h2 className="font-medium">Documents</h2>
-      <p className="text-muted-foreground mt-1 text-sm">
-        Security Clearance · AWB Sticker · ADF · AWB · CDN (PRD §9).
-      </p>
 
-      <div className="mt-4 flex flex-wrap gap-1 border-b">
-        {DOCUMENT_TYPES.map((type) => (
+      <div className="bg-muted mt-4 inline-flex flex-wrap gap-1 rounded-lg p-1">
+        {visibleTabs.map((tab) => (
           <button
-            key={type}
+            key={tab.key}
             type="button"
-            onClick={() => setActiveType(type)}
-            className={`rounded-t px-3 py-1.5 text-sm ${
-              activeType === type
-                ? 'border-primary text-foreground border-b-2 font-medium'
-                : 'text-muted-foreground'
-            }`}
+            onClick={() => setRequestedTab(tab.key)}
+            className={cn(
+              'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+              activeTab === tab.key
+                ? 'bg-card text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
           >
-            {DOCUMENT_TAB_LABELS[type]}
+            {tab.label}
           </button>
         ))}
       </div>
 
-      <div className="mt-4">
-        {readinessQuery.isLoading && <p className="text-muted-foreground text-sm">Loading…</p>}
-        {readinessQuery.data && !readinessQuery.data.ready && (
-          // BR-07: the exact confirmed message, never reworded.
-          <p className="text-destructive text-sm">
-            Cannot generate document. Please enter Box and Weight information.
-          </p>
-        )}
-        {readinessQuery.data?.ready && (
-          <DocumentTab key={activeType} shipmentId={shipmentId} type={activeType} />
-        )}
-      </div>
+      <div className="mt-6">{content}</div>
+    </div>
+  );
+}
+
+/** ADF, AWB, and CUSDEC: a user-uploaded PDF, not a generated document — upload/replace, Download, Print. No fieldData form, no Issue step. */
+function UploadDocumentTab({ shipmentId, type }: { shipmentId: string; type: DocumentType }) {
+  const documentQuery = useDocument(shipmentId, type, true);
+  const uploadMutation = useUploadDocumentFile(shipmentId, type);
+  const downloadMutation = useDownloadDocumentFile();
+  const showToast = useToastStore((state) => state.show);
+  const [fileInputKey, setFileInputKey] = useState(0);
+
+  const notFound =
+    documentQuery.isError &&
+    documentQuery.error instanceof ApiClientError &&
+    documentQuery.error.status === 404;
+
+  const handleFileSelected = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    uploadMutation.mutate(file, {
+      onError: (error) => {
+        showToast(
+          error instanceof ApiClientError ? error.message : 'Unable to upload this document.',
+        );
+      },
+      // Resets the file input so selecting the same file again still fires onChange.
+      onSettled: () => setFileInputKey((key) => key + 1),
+    });
+  };
+
+  const handleOpen = (document: ShipmentDocument) => {
+    downloadMutation.mutate(document.id, {
+      onSuccess: (blob) => {
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank', 'noopener,noreferrer');
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      },
+      onError: (error) => {
+        showToast(
+          error instanceof ApiClientError ? error.message : 'Unable to open this document.',
+        );
+      },
+    });
+  };
+
+  if (documentQuery.isLoading) {
+    return <p className="text-muted-foreground text-sm">Loading…</p>;
+  }
+  if (documentQuery.isError && !notFound) {
+    return <p className="text-destructive text-sm">Unable to load this document.</p>;
+  }
+
+  const document = documentQuery.data;
+
+  return (
+    <div className="flex flex-col gap-4">
+      {document ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+            {document.status} · v{document.version}
+          </span>
+          <span className="text-muted-foreground text-xs">
+            Uploaded {new Date(document.updatedAt).toLocaleString()}
+          </span>
+        </div>
+      ) : (
+        <p className="text-muted-foreground text-sm">No file has been uploaded yet.</p>
+      )}
+
+      <RequirePermission permission="documents.manage">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`doc-upload-${type}`}>
+            {document ? 'Replace file (PDF)' : 'Upload file (PDF)'}
+          </Label>
+          <input
+            key={fileInputKey}
+            id={`doc-upload-${type}`}
+            type="file"
+            accept="application/pdf"
+            disabled={uploadMutation.isPending}
+            onChange={handleFileSelected}
+            className="text-sm"
+          />
+        </div>
+      </RequirePermission>
+
+      {document && (
+        <div className="flex flex-wrap gap-2 border-t pt-4">
+          <Button
+            variant="outline"
+            disabled={downloadMutation.isPending}
+            onClick={() => handleOpen(document)}
+          >
+            {downloadMutation.isPending ? 'Opening…' : 'Print'}
+          </Button>
+          <Button
+            variant="outline"
+            disabled={downloadMutation.isPending}
+            onClick={() => handleOpen(document)}
+          >
+            Download
+          </Button>
+        </div>
+      )}
+
+      {uploadMutation.isError && (
+        <p className="text-destructive text-sm">
+          {uploadMutation.error instanceof ApiClientError
+            ? uploadMutation.error.message
+            : 'Unable to upload this document.'}
+        </p>
+      )}
     </div>
   );
 }
@@ -75,6 +251,7 @@ export function DocumentsSection({ shipmentId }: { shipmentId: string }) {
 function DocumentTab({ shipmentId, type }: { shipmentId: string; type: DocumentType }) {
   const documentQuery = useDocument(shipmentId, type, true);
   const ensureDraftMutation = useEnsureDraft(shipmentId, type);
+  const [confirmingCreate, setConfirmingCreate] = useState(false);
 
   const notFound =
     documentQuery.isError &&
@@ -86,13 +263,32 @@ function DocumentTab({ shipmentId, type }: { shipmentId: string; type: DocumentT
       {documentQuery.isLoading && <p className="text-muted-foreground text-sm">Loading…</p>}
 
       {notFound && (
-        <RequirePermission permission="documents.manage">
-          <Button
-            disabled={ensureDraftMutation.isPending}
-            onClick={() => ensureDraftMutation.mutate()}
-          >
-            {ensureDraftMutation.isPending ? 'Creating…' : `Create ${DOCUMENT_TAB_LABELS[type]}`}
-          </Button>
+        // DocumentTab only ever renders for SECURITY_CLEARANCE/AWB_STICKER/CDN
+        // (ADF/AWB/CUSDEC route to UploadDocumentTab instead) — all three are
+        // Executive-only, gated on documents.basic.manage, not documents.manage.
+        <RequirePermission permission="documents.basic.manage">
+          {confirmingCreate ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm">Create {DOCUMENT_TAB_LABELS[type]}?</span>
+              <Button
+                disabled={ensureDraftMutation.isPending}
+                onClick={() => ensureDraftMutation.mutate()}
+              >
+                {ensureDraftMutation.isPending ? 'Creating…' : 'Confirm'}
+              </Button>
+              <Button
+                variant="outline"
+                disabled={ensureDraftMutation.isPending}
+                onClick={() => setConfirmingCreate(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <Button onClick={() => setConfirmingCreate(true)}>
+              {`Create ${DOCUMENT_TAB_LABELS[type]}`}
+            </Button>
+          )}
         </RequirePermission>
       )}
 
@@ -141,7 +337,7 @@ function DocumentDetail({
 }: {
   shipmentId: string;
   type: DocumentType;
-  document: import('@hub-lanka/shared').ShipmentDocument;
+  document: ShipmentDocument;
 }) {
   const updateMutation = useUpdateDocumentFields(shipmentId, type);
   const issueMutation = useIssueDocument(shipmentId, type);
@@ -150,20 +346,32 @@ function DocumentDetail({
   const downloadMutation = useDownloadDocumentFile();
   const showToast = useToastStore((state) => state.show);
 
-  const [fieldData, setFieldData] = useState<Record<string, string>>(
-    () => document.fieldData as Record<string, string>,
-  );
+  const savedFieldData = document.fieldData as Record<string, string>;
+  const [fieldData, setFieldData] = useState<Record<string, string>>(savedFieldData);
+  const [isEditingFields, setIsEditingFields] = useState(false);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
 
   const isIssued = document.status === 'ISSUED';
   const isIssuable = (ISSUABLE_DOCUMENT_TYPES as readonly DocumentType[]).includes(type);
   const isPdfType = (PDF_DOCUMENT_TYPES as readonly DocumentType[]).includes(type);
+  const hasFieldData = FIELD_DATA_FIELDS[type].length > 0;
   // BR-63: the only type with no rendered output at all — no Preview, no Print.
   const hasRenderedOutput = type !== 'ADF';
   const printLabel = type === 'AWB_STICKER' ? 'Print Sticker' : 'Print';
 
+  const handleEditFields = () => {
+    setFieldData(savedFieldData);
+    setIsEditingFields(true);
+  };
+
+  const handleCancelEditFields = () => {
+    setFieldData(savedFieldData);
+    setIsEditingFields(false);
+  };
+
   const handleSave = () => {
     updateMutation.mutate(fieldData, {
+      onSuccess: () => setIsEditingFields(false),
       onError: (error) => {
         const message =
           error instanceof ApiClientError ? error.message : 'Unable to save this document.';
@@ -262,7 +470,7 @@ function DocumentDetail({
         ))}
       </div>
 
-      {FIELD_DATA_FIELDS[type].length > 0 && (
+      {hasFieldData && (
         <div className="grid grid-cols-1 gap-4 border-t pt-4 sm:grid-cols-3">
           {FIELD_DATA_FIELDS[type].map((field) => (
             <div key={field.key} className="flex flex-col gap-1.5">
@@ -270,7 +478,7 @@ function DocumentDetail({
               <Input
                 id={`doc-${type}-${field.key}`}
                 value={fieldData[field.key] ?? ''}
-                disabled={isIssued}
+                disabled={isIssued || !isEditingFields}
                 onChange={(e) => setFieldData((prev) => ({ ...prev, [field.key]: e.target.value }))}
               />
             </div>
@@ -279,14 +487,6 @@ function DocumentDetail({
       )}
 
       <div className="flex flex-wrap gap-2 border-t pt-4">
-        {!isIssued && (
-          <RequirePermission permission="documents.manage">
-            <Button variant="outline" disabled={updateMutation.isPending} onClick={handleSave}>
-              {updateMutation.isPending ? 'Saving…' : 'Save'}
-            </Button>
-          </RequirePermission>
-        )}
-
         {hasRenderedOutput && (
           <Button variant="outline" disabled={previewMutation.isPending} onClick={handlePreview}>
             {previewMutation.isPending
@@ -303,8 +503,31 @@ function DocumentDetail({
           </Button>
         )}
 
+        {!isIssued && hasFieldData && (
+          <RequirePermission permission="documents.basic.manage">
+            {isEditingFields ? (
+              <>
+                <Button
+                  variant="outline"
+                  disabled={updateMutation.isPending}
+                  onClick={handleCancelEditFields}
+                >
+                  Cancel
+                </Button>
+                <Button disabled={updateMutation.isPending} onClick={handleSave}>
+                  {updateMutation.isPending ? 'Saving…' : 'Save'}
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" onClick={handleEditFields}>
+                Edit
+              </Button>
+            )}
+          </RequirePermission>
+        )}
+
         {isIssuable && !isIssued && (
-          <RequirePermission permission="documents.manage">
+          <RequirePermission permission="documents.basic.manage">
             <Button disabled={issueMutation.isPending} onClick={handleIssue}>
               {issueMutation.isPending ? 'Issuing…' : 'Issue'}
             </Button>

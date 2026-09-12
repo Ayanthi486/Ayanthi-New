@@ -1,4 +1,4 @@
-import type { Shipment as SharedShipment, ShipmentStatus } from '@hub-lanka/shared';
+import type { Shipment as SharedShipment, ServiceType, ShipmentStatus } from '@hub-lanka/shared';
 
 export interface ShipmentRow {
   id: string;
@@ -11,11 +11,12 @@ export interface ShipmentRow {
   destinationAirportId: string | null;
   destinationAirport: { code: string } | null;
   shipperId: string;
-  shipper: { name: string };
+  shipper: { name: string; address: string | null; contact: string | null };
   consigneeId: string;
-  consignee: { name: string };
+  consignee: { name: string; address: string | null; contact: string | null };
   commodityId: string;
   commodity: { name: string; delayHours: Date };
+  serviceType: ServiceType;
   flightDate: Date;
   handlingDate: Date | null;
   depTime: Date;
@@ -35,8 +36,8 @@ export interface ShipmentRow {
 /** Shared by shipment/cargo services so a shipment read always resolves its master-data names the same way. */
 export const SHIPMENT_WITH_NAMES_INCLUDE = {
   airline: { select: { code: true, name: true } },
-  shipper: { select: { name: true } },
-  consignee: { select: { name: true } },
+  shipper: { select: { name: true, address: true, contact: true } },
+  consignee: { select: { name: true, address: true, contact: true } },
   commodity: { select: { name: true, delayHours: true } },
   destinationAirport: { select: { code: true } },
 } as const;
@@ -120,10 +121,15 @@ export function toSharedShipment(row: ShipmentRow): SharedShipment {
     destinationAirportCode: row.destinationAirport ? row.destinationAirport.code : null,
     shipperId: row.shipperId,
     shipperName: row.shipper.name,
+    shipperAddress: row.shipper.address,
+    shipperContact: row.shipper.contact,
     consigneeId: row.consigneeId,
     consigneeName: row.consignee.name,
+    consigneeAddress: row.consignee.address,
+    consigneeContact: row.consignee.contact,
     commodityId: row.commodityId,
     commodityName: row.commodity.name,
+    serviceType: row.serviceType,
     flightDate: formatDateOnly(row.flightDate),
     handlingDate: row.handlingDate ? formatDateOnly(row.handlingDate) : null,
     depTime: formatTime24(row.depTime),

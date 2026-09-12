@@ -59,11 +59,12 @@ describe('shipment.util', () => {
       destinationAirportId: 'airport-1',
       destinationAirport: { code: 'DXB' },
       shipperId: 'shipper-1',
-      shipper: { name: 'Acme Exports' },
+      shipper: { name: 'Acme Exports', address: '123 Export Way', contact: '+94 11 234 5678' },
       consigneeId: 'consignee-1',
-      consignee: { name: 'Acme Imports' },
+      consignee: { name: 'Acme Imports', address: '456 Import Ave', contact: null },
       commodityId: 'commodity-1',
       commodity: { name: 'Edible Fish', delayHours: new Date('1970-01-01T05:00:00.000Z') },
+      serviceType: 'BOOKING_AND_HANDLING',
       flightDate: new Date('2026-06-15T00:00:00.000Z'),
       handlingDate: new Date('2026-06-14T00:00:00.000Z'),
       depTime: new Date('1970-01-01T03:05:00.000Z'),
@@ -96,8 +97,13 @@ describe('shipment.util', () => {
       expect(shared.airlineCode).toBe('EK');
       expect(shared.airlineName).toBe('Emirates');
       expect(shared.shipperName).toBe('Acme Exports');
+      expect(shared.shipperAddress).toBe('123 Export Way');
+      expect(shared.shipperContact).toBe('+94 11 234 5678');
       expect(shared.consigneeName).toBe('Acme Imports');
+      expect(shared.consigneeAddress).toBe('456 Import Ave');
+      expect(shared.consigneeContact).toBeNull();
       expect(shared.commodityName).toBe('Edible Fish');
+      expect(shared.serviceType).toBe('BOOKING_AND_HANDLING');
       expect(shared.destinationAirportCode).toBe('DXB');
     });
 

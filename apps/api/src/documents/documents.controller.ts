@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Patch, Post, StreamableFile } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  StreamableFile,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags } from '@nestjs/swagger';
 import {
   DOCUMENT_TYPES,
@@ -6,6 +17,7 @@ import {
   type DocumentType,
   type ShipmentDocument,
 } from '@hub-lanka/shared';
+import { memoryStorage } from 'multer';
 import { ValidationError } from '../common/errors/app-error';
 import { AuthenticatedOnly } from '../identity/decorators/authenticated.decorator';
 import { CurrentUser } from '../identity/decorators/current-user.decorator';
@@ -13,6 +25,10 @@ import { RequirePermission } from '../identity/decorators/require-permission.dec
 import type { RequestUser } from '../identity/types';
 import { DocumentsService } from './documents.service';
 import { SaveDocumentDto } from './dto/save-document.dto';
+
+// Same infra-level backstop as PaymentController — the service's own
+// validateFileKind is the real business rule check.
+const MULTER_HARD_CEILING_BYTES = 25 * 1024 * 1024;
 
 function parseType(value: string): DocumentType {
   if (!(DOCUMENT_TYPES as readonly string[]).includes(value)) {
@@ -64,6 +80,29 @@ export class DocumentsController {
     @CurrentUser() actor: RequestUser,
   ): Promise<ShipmentDocument> {
     return this.documentsService.updateFieldData(shipmentId, parseType(type), dto.fieldData, actor);
+  }
+
+  @Post('shipments/:shipmentId/documents/:type/upload')
+  @RequirePermission('documents.manage')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: MULTER_HARD_CEILING_BYTES },
+    }),
+  )
+  async upload(
+    @Param('shipmentId') shipmentId: string,
+    @Param('type') type: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() actor: RequestUser,
+  ): Promise<ShipmentDocument> {
+    if (!file) throw new ValidationError('A file is required');
+    return this.documentsService.uploadFile(
+      shipmentId,
+      parseType(type),
+      { buffer: file.buffer, mimetype: file.mimetype },
+      actor,
+    );
   }
 
   @Post('shipments/:shipmentId/documents/:type/issue')

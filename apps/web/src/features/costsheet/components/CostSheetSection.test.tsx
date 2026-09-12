@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/lib/authStore';
 import { CostSheetSection } from './CostSheetSection';
@@ -11,9 +12,11 @@ function jsonResponse(status: number, body: unknown) {
 function renderSection() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={queryClient}>
-      <CostSheetSection shipmentId="shipment-1" />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <CostSheetSection shipmentId="shipment-1" />
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -110,7 +113,8 @@ describe('CostSheetSection', () => {
     expect(screen.queryByRole('button', { name: 'Release' })).not.toBeInTheDocument();
   });
 
-  it('disables every field once Approved and shows no edit action', async () => {
+  it('without costsheet.edit_approved (e.g. Executive), Approved fields stay disabled with no Edit action', async () => {
+    // beforeEach grants costsheet.prepare/view/approve only — no edit_approved.
     vi.stubGlobal(
       'fetch',
       vi.fn(() =>
@@ -129,9 +133,53 @@ describe('CostSheetSection', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('SL Customs Receipts')).toBeDisabled();
     });
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Release' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
+  });
+
+  it('with costsheet.edit_approved (Manager), an Approved Cost Sheet can still be edited', async () => {
+    useAuthStore.setState({
+      permissions: new Set(['costsheet.prepare', 'costsheet.view', 'costsheet.approve', 'costsheet.edit_approved']),
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          jsonResponse(200, {
+            ...costSheetFixture,
+            status: 'APPROVED',
+            approvedAt: '2026-06-02T00:00:00.000Z',
+          }),
+        ),
+      ),
+    );
+
+    renderSection();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument());
+
+    const input = screen.getByLabelText('SL Customs Receipts') as HTMLInputElement;
+    expect(input).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(input).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+  });
+
+  it('Released Cost Sheets remain editable via costsheet.prepare alone (Executive can edit after release)', async () => {
+    // beforeEach's default permission set has costsheet.prepare but not
+    // costsheet.edit_released — matches an Executive account.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(jsonResponse(200, { ...costSheetFixture, status: 'RELEASED' }))),
+    );
+
+    renderSection();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByLabelText('SL Customs Receipts')).not.toBeDisabled();
   });
 
   it('triggers create when the button is clicked', async () => {
@@ -151,6 +199,7 @@ describe('CostSheetSection', () => {
       expect(screen.getByRole('button', { name: 'Create Cost Sheet' })).toBeInTheDocument();
     });
     fireEvent.click(screen.getByRole('button', { name: 'Create Cost Sheet' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -158,5 +207,43 @@ describe('CostSheetSection', () => {
         expect.objectContaining({ method: 'POST' }),
       );
     });
+  });
+
+  it('fields start read-only with an Edit button; Cancel reverts without saving', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(jsonResponse(200, costSheetFixture))),
+    );
+
+    renderSection();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument());
+
+    const input = screen.getByLabelText('SL Customs Receipts') as HTMLInputElement;
+    expect(input).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(input).not.toBeDisabled();
+    fireEvent.change(input, { target: { value: '9999' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('SL Customs Receipts')).toHaveValue('1800.00');
+  });
+
+  it('Print opens a new window and writes a printable summary into it', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(jsonResponse(200, costSheetFixture))),
+    );
+    const fakeWindow = { document: { write: vi.fn(), close: vi.fn() }, focus: vi.fn(), print: vi.fn() };
+    vi.stubGlobal('open', vi.fn().mockReturnValue(fakeWindow));
+
+    renderSection();
+    fireEvent.click(await screen.findByRole('button', { name: 'Print' }));
+
+    expect(fakeWindow.document.write).toHaveBeenCalledWith(expect.stringContaining('Cost Sheet'));
+    expect(fakeWindow.print).toHaveBeenCalledTimes(1);
   });
 });

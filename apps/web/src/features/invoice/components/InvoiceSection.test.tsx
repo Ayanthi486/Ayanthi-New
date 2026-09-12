@@ -150,6 +150,7 @@ describe('InvoiceSection', () => {
       expect(screen.getByRole('button', { name: 'Create Invoice' })).toBeInTheDocument();
     });
     fireEvent.click(screen.getByRole('button', { name: 'Create Invoice' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -157,5 +158,45 @@ describe('InvoiceSection', () => {
         expect.objectContaining({ method: 'POST' }),
       );
     });
+  });
+
+  it('fields start read-only with an Edit button; Cancel reverts without saving', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(jsonResponse(200, invoiceFixture))),
+    );
+
+    renderSection();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument());
+
+    const input = screen.getByLabelText('Invoice No') as HTMLInputElement;
+    expect(input).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add line' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(input).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add line' })).toBeInTheDocument();
+    fireEvent.change(input, { target: { value: 'CHANGED' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Invoice No')).toHaveValue('HUB/IU/0676/2026');
+  });
+
+  it('Print opens a new window and writes a printable summary into it', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(jsonResponse(200, invoiceFixture))),
+    );
+    const fakeWindow = { document: { write: vi.fn(), close: vi.fn() }, focus: vi.fn(), print: vi.fn() };
+    vi.stubGlobal('open', vi.fn().mockReturnValue(fakeWindow));
+
+    renderSection();
+    fireEvent.click(await screen.findByRole('button', { name: 'Print' }));
+
+    expect(fakeWindow.document.write).toHaveBeenCalledWith(expect.stringContaining('Invoice'));
+    expect(fakeWindow.print).toHaveBeenCalledTimes(1);
   });
 });

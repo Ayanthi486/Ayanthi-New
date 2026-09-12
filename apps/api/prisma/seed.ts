@@ -26,6 +26,9 @@ const ROLE_PERMISSIONS: Record<RoleName, PermissionKey[]> = {
     'costsheet.prepare',
     'costsheet.view',
     'documents.manage',
+    // Security Clearance/AWB Sticker/CDN — Executive-only, not granted to
+    // Manager or Director below.
+    'documents.basic.manage',
     'cutoff.acknowledge',
     'masterdata.commodity.create',
     'masterdata.airport.create',
@@ -51,6 +54,9 @@ const ROLE_PERMISSIONS: Record<RoleName, PermissionKey[]> = {
     'costsheet.prepare',
     'costsheet.edit_released',
     'costsheet.approve',
+    // Direct request: after Approved, only Manager may still edit — Executive
+    // loses edit access entirely once a Cost Sheet is Approved.
+    'costsheet.edit_approved',
     'costsheet.view',
     'invoice.manage',
     'invoice.exchange_rate.set',

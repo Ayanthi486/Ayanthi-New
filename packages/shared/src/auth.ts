@@ -33,6 +33,9 @@ export const PERMISSION_KEYS = [
   'costsheet.prepare',
   'costsheet.edit_released',
   'costsheet.approve',
+  // Once Approved, only a Manager may still edit — Executive is locked out
+  // (Executive's costsheet.prepare stops granting edit access at this stage).
+  'costsheet.edit_approved',
   'costsheet.view',
   'invoice.manage',
   'invoice.exchange_rate.set',
@@ -44,6 +47,10 @@ export const PERMISSION_KEYS = [
   'payment.view.readonly',
   'documents.manage',
   'documents.view.readonly',
+  // Security Clearance/AWB Sticker/CDN are Executive-only — nobody else can
+  // view or manage them, not even Manager/Director's broader documents.*
+  // grants above.
+  'documents.basic.manage',
   'cutoff.acknowledge',
   'masterdata.commodity.create',
   'masterdata.airport.create',
@@ -62,6 +69,10 @@ export const PERMISSION_KEYS = [
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
 
+/** A plain HTML input submits "" when left blank — see shipment.ts's identical helper. */
+const optional = <T extends z.ZodTypeAny>(inner: T) =>
+  z.preprocess((value) => (value === '' ? undefined : value), inner.optional());
+
 export const loginRequestSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
@@ -79,6 +90,9 @@ export const authUserSchema = z.object({
   // URL. The client fetches the actual bytes from GET /me/avatar as an
   // authenticated request (ARCHITECTURE §12: never a public bucket/link).
   hasAvatar: z.boolean(),
+  // National Identity Card number, self-service editable via Profile — used
+  // to auto-populate the Security Clearance certificate's NIC field.
+  idCardNo: z.string().nullable(),
 });
 export type AuthUser = z.infer<typeof authUserSchema>;
 
@@ -99,6 +113,7 @@ export type MeResponse = AuthUser;
 /** PATCH /me — self-service profile update. Email and role are read-only here (role is admin-managed, /users). */
 export const updateProfileRequestSchema = z.object({
   fullName: z.string().min(1, 'Full name is required'),
+  idCardNo: optional(z.string().trim().min(1)),
 });
 export type UpdateProfileRequest = z.infer<typeof updateProfileRequestSchema>;
 

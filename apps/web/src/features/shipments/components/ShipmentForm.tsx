@@ -3,6 +3,7 @@ import {
   createShipmentRequestSchema,
   updateShipmentRequestSchema,
   type CreateShipmentRequest,
+  type ServiceType,
   type Shipment,
   type UpdateShipmentRequest,
 } from '@hub-lanka/shared';
@@ -31,6 +32,16 @@ import { formatFlightNumber, splitFlightNumber } from '@/lib/utils';
 
 type FormValues = CreateShipmentRequest & { version?: number };
 
+export const SERVICE_TYPE_OPTIONS: { value: ServiceType; label: string }[] = [
+  { value: 'BOOKING_ONLY', label: 'Only Booking' },
+  { value: 'HANDLING_ONLY', label: 'Only Handling' },
+  { value: 'BOOKING_AND_HANDLING', label: 'Booking & Handling' },
+];
+
+export const SERVICE_TYPE_LABELS: Record<ServiceType, string> = Object.fromEntries(
+  SERVICE_TYPE_OPTIONS.map((opt) => [opt.value, opt.label]),
+) as Record<ServiceType, string>;
+
 interface ShipmentFormProps {
   shipment?: Shipment;
   onSubmit: (values: CreateShipmentRequest | UpdateShipmentRequest) => void;
@@ -55,7 +66,8 @@ function formatMawbNo(value: string): string {
  * `useForm`/schema pair:
  *
  * - Create: MAWB NO, DEST, FLIGHT (Airline + Flight No), DATE, SHIPPER,
- *   CONSIGNEE, COMMODITY — every one of them mandatory. DEP TIME on the
+ *   CONSIGNEE, COMMODITY, SERVICE TYPE (Only Booking/Only Handling/Booking
+ *   & Handling) — every one of them mandatory. DEP TIME on the
  *   Shipment itself is still required (schema/DB unchanged), but it has no
  *   field of its own here — Flight.depTime is required at Flight creation
  *   (both here and in Master Data), so selecting/creating a Flight always
@@ -146,6 +158,7 @@ export function ShipmentForm({
           shipperId: shipment.shipperId,
           consigneeId: shipment.consigneeId,
           commodityId: shipment.commodityId,
+          serviceType: shipment.serviceType,
           flightDate: shipment.flightDate,
           handlingDate: shipment.handlingDate ?? undefined,
           depTime: shipment.depTime,
@@ -166,6 +179,7 @@ export function ShipmentForm({
           shipperId: '',
           consigneeId: '',
           commodityId: '',
+          serviceType: '' as ServiceType,
           flightDate: '',
           depTime: '',
         },
@@ -265,6 +279,16 @@ export function ShipmentForm({
               {commoditiesQuery.data?.map((commodity) => (
                 <option key={commodity.id} value={commodity.id}>
                   {commodity.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field id="serviceType" label="Service Type" required error={errors.serviceType?.message}>
+            <Select id="serviceType" {...register('serviceType')}>
+              <option value="">Select a service type…</option>
+              {SERVICE_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
                 </option>
               ))}
             </Select>
@@ -550,6 +574,21 @@ export function ShipmentForm({
                 return { id: created.id, name: created.name };
               }}
             />
+          </Field>
+          <Field
+            id="serviceType"
+            label="SERVICE TYPE"
+            required
+            error={errors.serviceType?.message}
+          >
+            <Select id="serviceType" {...register('serviceType')}>
+              <option value="">Select a service type…</option>
+              {SERVICE_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </Select>
           </Field>
         </div>
       )}

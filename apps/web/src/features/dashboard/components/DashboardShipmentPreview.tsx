@@ -34,15 +34,6 @@ export function DashboardShipmentPreview({
 
   const columns = useMemo<ColumnDef<Shipment, unknown>[]>(
     () => [
-      {
-        id: 'view',
-        header: '',
-        cell: ({ row }) => (
-          <Link to={`/shipments/${row.original.id}`} className="text-primary hover:underline">
-            View
-          </Link>
-        ),
-      },
       { header: 'Shipment ID', accessorKey: 'shipmentNo' },
       { header: 'DEP TIME', accessorKey: 'depTime' },
       { header: 'DATE', accessorKey: 'flightDate' },
@@ -59,6 +50,15 @@ export function DashboardShipmentPreview({
             shipment={row.original}
             alert={alertsByShipmentId.get(row.original.id)}
           />
+        ),
+      },
+      {
+        id: 'actions',
+        header: 'Actions',
+        cell: ({ row }) => (
+          <Link to={`/shipments/${row.original.id}`} className="text-primary hover:underline">
+            View
+          </Link>
         ),
       },
     ],

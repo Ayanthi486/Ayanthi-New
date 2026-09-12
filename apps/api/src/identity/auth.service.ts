@@ -108,6 +108,7 @@ export class AuthService {
         roles,
         permissions,
         hasAvatar: user.avatarStorageKey !== null,
+        idCardNo: user.idCardNo,
       },
     };
   }

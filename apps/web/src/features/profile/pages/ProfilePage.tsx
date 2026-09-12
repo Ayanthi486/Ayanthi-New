@@ -35,20 +35,24 @@ export function ProfilePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [fullName, setFullName] = useState(user?.fullName ?? '');
+  const [idCardNo, setIdCardNo] = useState(user?.idCardNo ?? '');
   const [clientFileError, setClientFileError] = useState<string | null>(null);
 
   if (!user) return null;
 
-  const isDirty = fullName.trim() !== user.fullName && fullName.trim().length > 0;
+  const isDirty =
+    (fullName.trim() !== user.fullName && fullName.trim().length > 0) ||
+    idCardNo.trim() !== (user.idCardNo ?? '');
 
   const handleSave = () => {
     const trimmed = fullName.trim();
     if (!trimmed) return;
-    updateProfileMutation.mutate({ fullName: trimmed });
+    updateProfileMutation.mutate({ fullName: trimmed, idCardNo: idCardNo.trim() });
   };
 
   const handleCancel = () => {
     setFullName(user.fullName);
+    setIdCardNo(user.idCardNo ?? '');
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -133,6 +137,17 @@ export function ProfilePage() {
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
             />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="profile-id-card-no">NIC No</Label>
+            <Input
+              id="profile-id-card-no"
+              value={idCardNo}
+              onChange={(e) => setIdCardNo(e.target.value)}
+            />
+            <p className="text-muted-foreground text-xs">
+              Used to auto-fill the Security Clearance certificate's NIC field.
+            </p>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="profile-email">Email</Label>

@@ -70,6 +70,7 @@ describe('Cargo handling (e2e)', () => {
         consigneeId: masterData.consigneeId,
         commodityId: masterData.commodityId,
         destinationAirportId: masterData.airportId,
+        serviceType: 'BOOKING_AND_HANDLING',
         flightNo: 'EK123',
         mawbNo: '176-0000-0001',
         flightDate: colomboToday(),
@@ -134,14 +135,19 @@ describe('Cargo handling (e2e)', () => {
   it('is blocked once the shipment has Departed', async () => {
     const shipment = await createShipment(managerToken);
     await request(server)
+      .patch(`/api/v1/shipments/${shipment.id}/cargo`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ version: 0, boxCount: 5, weightKg: '100' });
+
+    await request(server)
       .patch(`/api/v1/shipments/${shipment.id}/status`)
       .set('Authorization', `Bearer ${managerToken}`)
-      .send({ status: 'DEPARTED', version: 0, actualDepartureAt: '2026-09-11T20:00' });
+      .send({ status: 'DEPARTED', version: 1, actualDepartureAt: '2026-09-11T20:00' });
 
     const res = await request(server)
       .patch(`/api/v1/shipments/${shipment.id}/cargo`)
       .set('Authorization', `Bearer ${managerToken}`)
-      .send({ version: 0, boxCount: 5 });
+      .send({ version: 2, boxCount: 6 });
     expect(res.status).toBe(422);
   });
 

@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AddShipmentAction } from '@/features/shipments/components/AddShipmentAction';
-import { KpiRow } from '@/features/shipments/components/KpiRow';
 import { ScheduleGrid } from '@/features/shipments/components/ScheduleGrid';
 import { useShipments } from '@/features/shipments/hooks/useShipments';
 
@@ -19,6 +18,9 @@ export function SchedulePage() {
   const [query, setQuery] = useState<ShipmentListQuery>({});
 
   const shipmentsQuery = useShipments(query);
+  const shipments = shipmentsQuery.data?.data ?? [];
+  const bookingOnlyShipments = shipments.filter((s) => s.serviceType === 'BOOKING_ONLY');
+  const handlingShipments = shipments.filter((s) => s.serviceType !== 'BOOKING_ONLY');
 
   return (
     <div className="flex flex-col gap-6">
@@ -36,12 +38,6 @@ export function SchedulePage() {
           <AddShipmentAction />
         </div>
       </div>
-
-      {shipmentsQuery.data && (
-        <div className="print:hidden">
-          <KpiRow kpis={shipmentsQuery.data.kpis} />
-        </div>
-      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-4 print:hidden">
         <div className="flex flex-col gap-1.5 sm:col-span-2">
@@ -75,10 +71,31 @@ export function SchedulePage() {
         </div>
       </div>
 
-      <ScheduleGrid
-        shipments={shipmentsQuery.data?.data ?? []}
-        isLoading={shipmentsQuery.isLoading}
-      />
+      {/*
+        Split by Service Type (PRD-driven direct request): Handling work
+        (Only Handling + Booking & Handling) is the priority section and
+        sits on top; Only Booking shipments — no handling involved — sit
+        below as their own section. Both stay sorted by Dep Time, same as
+        the single grid before this split (filtering a depTime-ordered
+        list preserves that order within each subset).
+      */}
+      <div className="flex flex-col gap-2">
+        <h2 className="font-medium">Handling Shipments</h2>
+        <ScheduleGrid
+          shipments={handlingShipments}
+          isLoading={shipmentsQuery.isLoading}
+          emptyMessage="No Handling shipments for this view."
+        />
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <h2 className="font-medium">Booking Only Shipments</h2>
+        <ScheduleGrid
+          shipments={bookingOnlyShipments}
+          isLoading={shipmentsQuery.isLoading}
+          emptyMessage="No Booking Only shipments for this view."
+        />
+      </div>
     </div>
   );
 }

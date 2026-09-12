@@ -16,6 +16,7 @@ function setPermissions(permissions: string[]) {
       roles: ['Manager'],
       permissions,
       hasAvatar: false,
+      idCardNo: null,
     },
     permissions: new Set(permissions),
     accessToken: 'token',
@@ -40,10 +41,15 @@ const shipment: Shipment = {
   destinationAirportCode: 'DXB',
   shipperId: 'shipper-1',
   shipperName: 'Acme Exports',
+  shipperAddress: null,
+  shipperContact: null,
   consigneeId: 'consignee-1',
   consigneeName: 'Acme Imports',
+  consigneeAddress: null,
+  consigneeContact: null,
   commodityId: 'commodity-1',
   commodityName: 'Edible Fish',
+  serviceType: 'BOOKING_AND_HANDLING',
   flightDate: '2026-06-15',
   handlingDate: '2026-06-14',
   depTime: '03:05',
@@ -229,7 +235,7 @@ describe('ScheduleGrid', () => {
       fireEvent.change(screen.getByRole('combobox'), { target: { value: 'DEPARTED' } });
 
       const dialog = await screen.findByRole('dialog');
-      expect(within(dialog).getByText(/Actual departure time/)).toBeInTheDocument();
+      expect(within(dialog).getByText(/Enter departure date & time/)).toBeInTheDocument();
       expect(within(dialog).getByRole('button', { name: 'Confirm' })).toBeDisabled();
     });
 

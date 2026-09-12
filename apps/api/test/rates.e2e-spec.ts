@@ -79,6 +79,7 @@ describe('Rate Table (e2e)', () => {
         consigneeId: masterData.consigneeId,
         commodityId: masterData.commodityId,
         destinationAirportId: masterData.airportId,
+        serviceType: 'BOOKING_AND_HANDLING',
         flightNo: 'EK123',
         mawbNo: '176-0000-0001',
         flightDate: colomboToday(),

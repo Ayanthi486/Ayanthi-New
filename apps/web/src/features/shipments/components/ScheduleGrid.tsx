@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import type { Shipment } from '@hub-lanka/shared';
 import { DataTable } from '@/components/shared/DataTable';
 import { Button } from '@/components/ui/button';
+import { CargoValueCell } from '@/features/shipments/components/CargoValueCell';
 import { ChangeStatusControl } from '@/features/shipments/components/ChangeStatusControl';
 import { useToastStore } from '@/lib/toastStore';
 
@@ -26,9 +27,11 @@ const dash = (value: string | number | null): string | number => value ?? '—';
 export function ScheduleGrid({
   shipments,
   isLoading,
+  emptyMessage = 'No shipments for this view.',
 }: {
   shipments: Shipment[];
   isLoading: boolean;
+  emptyMessage?: string;
 }) {
   const showToast = useToastStore((state) => state.show);
 
@@ -57,14 +60,18 @@ export function ScheduleGrid({
       { header: 'SHIPPER', accessorKey: 'shipperName' },
       { header: 'CONSIGNEE', accessorKey: 'consigneeName' },
       {
+        id: 'boxCount',
         header: 'BOX',
-        accessorKey: 'boxCount',
-        cell: ({ getValue }) => dash(getValue<number | null>()),
+        cell: ({ row }) => (
+          <CargoValueCell shipment={row.original} value={dash(row.original.boxCount)} />
+        ),
       },
       {
+        id: 'weightKg',
         header: 'WEIGHT',
-        accessorKey: 'weightKg',
-        cell: ({ getValue }) => dash(getValue<string | null>()),
+        cell: ({ row }) => (
+          <CargoValueCell shipment={row.original} value={dash(row.original.weightKg)} />
+        ),
       },
       // Dep Time minus the shipment's Commodity's Delay Hours — computed
       // server-side (shipment.util.ts's computeCutoffTime).
@@ -117,7 +124,7 @@ export function ScheduleGrid({
       columns={columns}
       data={shipments}
       isLoading={isLoading}
-      emptyMessage="No shipments for this view."
+      emptyMessage={emptyMessage}
       hideLastColumnOnPrint
     />
   );

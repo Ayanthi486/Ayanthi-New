@@ -35,9 +35,9 @@ export class CostSheetController {
     return this.costSheetService.getById(id);
   }
 
-  // costsheet.prepare is the broader of the two edit permissions (Executive
-  // + Manager); the service enforces costsheet.edit_released once the
-  // sheet is Released — see CostSheetService#update.
+  // costsheet.prepare covers both Draft and Released editing (Executive +
+  // Manager); the service additionally enforces costsheet.edit_approved
+  // (Manager only) once the sheet is Approved — see CostSheetService#update.
   @Patch(':id')
   @RequirePermission('costsheet.prepare')
   async update(

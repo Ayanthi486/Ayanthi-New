@@ -17,6 +17,10 @@ export const SHIPMENT_STATUSES = [
 ] as const;
 export type ShipmentStatus = (typeof SHIPMENT_STATUSES)[number];
 
+/** Which service(s) a shipment is for — chosen on the Add Shipment form. */
+export const SERVICE_TYPES = ['BOOKING_ONLY', 'HANDLING_ONLY', 'BOOKING_AND_HANDLING'] as const;
+export type ServiceType = (typeof SERVICE_TYPES)[number];
+
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected date as YYYY-MM-DD');
 /** BR-16: 24-hour picker, no AM/PM. */
 const time24 = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Expected 24-hour time as HH:mm');
@@ -57,6 +61,7 @@ const shipmentFieldsShape = {
   shipperId: z.string().trim().min(1, 'Shipper is required'),
   consigneeId: z.string().trim().min(1, 'Consignee is required'),
   commodityId: z.string().trim().min(1, 'Commodity is required'),
+  serviceType: z.enum(SERVICE_TYPES),
   flightDate: dateOnly,
   handlingDate: optional(dateOnly),
   depTime: time24,
@@ -110,10 +115,15 @@ export const shipmentSchema = z.object({
   destinationAirportCode: z.string().nullable(),
   shipperId: z.string(),
   shipperName: z.string(),
+  shipperAddress: z.string().nullable(),
+  shipperContact: z.string().nullable(),
   consigneeId: z.string(),
   consigneeName: z.string(),
+  consigneeAddress: z.string().nullable(),
+  consigneeContact: z.string().nullable(),
   commodityId: z.string(),
   commodityName: z.string(),
+  serviceType: z.enum(SERVICE_TYPES),
   flightDate: z.string(),
   handlingDate: z.string().nullable(),
   depTime: z.string(),

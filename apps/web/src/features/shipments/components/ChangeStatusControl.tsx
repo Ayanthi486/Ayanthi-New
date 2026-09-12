@@ -43,6 +43,12 @@ export function ChangeStatusControl({ shipment }: { shipment: Shipment }) {
     return <StatusBadge status={shipment.status} />;
   }
 
+  // Cargo handling (box/weight) must be entered before a shipment can move
+  // to Departed — matches shipment.service.ts's changeStatus() guard. Kept
+  // as a plain, selectable option (not disabled/relabeled) so the dropdown
+  // stays narrow; picking it while missing just surfaces a toast instead.
+  const missingCargoDetails = shipment.boxCount === null || shipment.weightKg === null;
+
   // The shipment's current status is always offered, even if the viewer
   // couldn't have set it themselves (e.g. an Executive viewing a shipment a
   // Manager already moved to a Payment status) — otherwise the <select>
@@ -73,10 +79,16 @@ export function ChangeStatusControl({ shipment }: { shipment: Shipment }) {
   function handleChange(event: ChangeEvent<HTMLSelectElement>) {
     const next = event.target.value as ShipmentStatus;
     if (next === shipment.status) return;
-    if (next === 'DEPARTED' && shipment.actualDepartureAt === null) {
-      setDepartureAt('');
-      setDepartureDialogOpen(true);
-      return;
+    if (next === 'DEPARTED') {
+      if (missingCargoDetails) {
+        showToast('Add box & weight first.');
+        return;
+      }
+      if (shipment.actualDepartureAt === null) {
+        setDepartureAt('');
+        setDepartureDialogOpen(true);
+        return;
+      }
     }
     submitStatus(next);
   }
@@ -100,7 +112,7 @@ export function ChangeStatusControl({ shipment }: { shipment: Shipment }) {
       <Dialog open={departureDialogOpen} onOpenChange={setDepartureDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Actual departure time</DialogTitle>
+            <DialogTitle>Enter departure date &amp; time</DialogTitle>
             <DialogDescription>
               When did shipment {shipment.shipmentNo} actually depart?
             </DialogDescription>

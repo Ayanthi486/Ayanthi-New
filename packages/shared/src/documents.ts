@@ -1,16 +1,18 @@
 import { z } from 'zod';
 
-/** CONTEXT.md §15: five tabs on the Shipment View, in this order. */
-export const DOCUMENT_TYPES = ['SECURITY_CLEARANCE', 'AWB_STICKER', 'ADF', 'AWB', 'CDN'] as const;
+/** CONTEXT.md §15: tabs on the Shipment View, in this order. */
+export const DOCUMENT_TYPES = ['SECURITY_CLEARANCE', 'AWB_STICKER', 'ADF', 'AWB', 'CDN', 'CUSDEC'] as const;
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 
 export const DOCUMENT_STATUSES = ['DRAFT', 'ISSUED'] as const;
 export type DocumentStatus = (typeof DOCUMENT_STATUSES)[number];
 
-/** BR-63/decision #3: the only type with no issue/print/download action at all. */
-export const ISSUABLE_DOCUMENT_TYPES = ['SECURITY_CLEARANCE', 'AWB_STICKER', 'AWB', 'CDN'] as const;
+/** ADF, AWB and CUSDEC are user-uploaded files, not generated in-house — no manual fields, no template render, no issue/print action of their own (they get Download/Print-the-uploaded-file instead, handled separately from the other three types). */
+export const UPLOAD_DOCUMENT_TYPES = ['ADF', 'AWB', 'CUSDEC'] as const;
+/** BR-63/decision #3: the only type with no issue/print/download action at all — plus ADF/AWB, which upload instead of issue. */
+export const ISSUABLE_DOCUMENT_TYPES = ['SECURITY_CLEARANCE', 'AWB_STICKER', 'CDN'] as const;
 /** Decision #3: the only types that render a real stored PDF file (Download). AWB Sticker prints live HTML only. */
-export const PDF_DOCUMENT_TYPES = ['SECURITY_CLEARANCE', 'AWB', 'CDN'] as const;
+export const PDF_DOCUMENT_TYPES = ['SECURITY_CLEARANCE', 'CDN'] as const;
 
 /** A plain HTML input submits "" when left blank — see shipment.ts's identical helper. */
 const optional = <T extends z.ZodTypeAny>(inner: T) =>
@@ -23,21 +25,22 @@ const optionalStr = () => optional(z.string().trim().min(1));
  * Matches the real form's three sections exactly (references/README.md's Security
  * Clearance inventory note) — shipper/agent certification, warf-officer handover,
  * taken-charge. Signature lines themselves are physical, not data fields.
+ *
+ * Direct request: the shipper/agent certification block (full name,
+ * designation, organization, NIC) and every date field are no longer typed
+ * by hand — they're auto-populated (preparer's account name, a fixed
+ * designation/org, the preparer's Profile ID card no., and the date of
+ * preparation/printing) and live only in `viewModel`, never `fieldData`. Only
+ * the handover/taken-charge officer's own name/staff-no fields — a different
+ * person's details recorded at handover, not the preparer's — stay manual.
  */
 export const securityClearanceFieldsSchema = z.object({
-  fullName: optionalStr(),
-  designation: optionalStr(),
-  organizationName: optionalStr(),
-  nic: optionalStr(),
-  certificationDate: optionalStr(),
   handoverEmployeeName: optionalStr(),
   handoverSNo: optionalStr(),
   handoverDesignation: optionalStr(),
   handoverNic: optionalStr(),
-  handoverDate: optionalStr(),
   takenChargeName: optionalStr(),
   takenChargeStaffNo: optionalStr(),
-  takenChargeDate: optionalStr(),
 });
 export type SecurityClearanceFields = z.infer<typeof securityClearanceFieldsSchema>;
 
@@ -169,12 +172,17 @@ export const cdnFieldsSchema = z.object({
 });
 export type CdnFields = z.infer<typeof cdnFieldsSchema>;
 
+/** CUSDEC is an uploaded-only document (like ADF/AWB) — no manual fields of its own. */
+export const cusdecFieldsSchema = z.object({});
+export type CusdecFields = z.infer<typeof cusdecFieldsSchema>;
+
 export const documentFieldsSchemaByType = {
   SECURITY_CLEARANCE: securityClearanceFieldsSchema,
   AWB_STICKER: awbStickerFieldsSchema,
   ADF: adfFieldsSchema,
   AWB: awbFieldsSchema,
   CDN: cdnFieldsSchema,
+  CUSDEC: cusdecFieldsSchema,
 } as const;
 
 export const saveDocumentRequestSchema = z.object({

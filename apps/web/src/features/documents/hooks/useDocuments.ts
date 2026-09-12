@@ -8,6 +8,7 @@ import {
   getReadiness,
   issueDocument,
   updateDocumentFields,
+  uploadDocumentFile,
 } from '@/features/documents/api/documentsApi';
 
 const readinessKey = (shipmentId: string) => ['document-readiness', shipmentId];
@@ -39,6 +40,14 @@ export function useUpdateDocumentFields(shipmentId: string, type: DocumentType) 
   return useMutation({
     mutationFn: (fieldData: Record<string, unknown>) =>
       updateDocumentFields(shipmentId, type, fieldData),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: documentKey(shipmentId, type) }),
+  });
+}
+
+export function useUploadDocumentFile(shipmentId: string, type: DocumentType) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => uploadDocumentFile(shipmentId, type, file),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: documentKey(shipmentId, type) }),
   });
 }

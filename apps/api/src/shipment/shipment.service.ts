@@ -79,6 +79,7 @@ export class ShipmentService {
             shipperId: input.shipperId,
             consigneeId: input.consigneeId,
             commodityId: input.commodityId,
+            serviceType: input.serviceType,
             flightDate: parseDateOnly(input.flightDate),
             handlingDate: input.handlingDate ? parseDateOnly(input.handlingDate) : null,
             depTime: parseTime24(input.depTime),
@@ -93,14 +94,26 @@ export class ShipmentService {
     return toSharedShipment(created);
   }
 
-  /** BR-15/AC-05/AC-06: defaults to today+tomorrow (Asia/Colombo) sorted by DEP TIME; search and explicit dates narrow that filter. */
+  /**
+   * BR-15/AC-05/AC-06: defaults to today+tomorrow (Asia/Colombo) sorted by DEP TIME; search and explicit dates narrow that filter.
+   *
+   * The date range filters on the flight's full departure instant
+   * (flightDate + depTime) — not shipment creation/update time, and not
+   * flightDate alone in isolation from depTime. In practice that's exactly
+   * `buildFlightDateFilter`'s flightDate-only comparison below: flightDate
+   * (@db.Date) and depTime (@db.Time) never cross a day boundary relative
+   * to each other (the same invariant `cutoff.util.ts`'s
+   * `combineFlightDateAndDepTime` relies on), so every depTime on a given
+   * flightDate already falls within [flightDate 00:00:00.000, flightDate
+   * 23:59:59.999] — comparing flightDate against an inclusive
+   * [dateFrom, dateTo] range is exactly equivalent to comparing the full
+   * departure datetime against [dateFrom 00:00:00.000, dateTo
+   * 23:59:59.999], with no separate depTime comparison needed.
+   */
   async list(query: ShipmentListQuery): Promise<ShipmentListResponse> {
-    const dateFrom = query.dateFrom ?? query.dateTo ?? colomboToday();
-    const dateTo = query.dateTo ?? (query.dateFrom ? query.dateFrom : addDays(dateFrom, 1));
-
     const where = {
       isDeleted: false,
-      flightDate: { gte: parseDateOnly(dateFrom), lte: parseDateOnly(dateTo) },
+      flightDate: this.buildFlightDateFilter(query.dateFrom, query.dateTo),
       ...(query.search
         ? { shipmentNo: { contains: query.search, mode: 'insensitive' as const } }
         : {}),
@@ -145,6 +158,29 @@ export class ShipmentService {
     return toSharedShipment(row);
   }
 
+  /**
+   * `dateFrom`/`dateTo` are independent, open-ended bounds: only `dateFrom`
+   * means "that date onward" with no upper limit; only `dateTo` means "up
+   * to and including that date" with no lower limit; both bound the range
+   * on each side (equal values narrow it to a single day). Neither given
+   * falls back to today+tomorrow (Asia/Colombo, BR-15) — the pre-existing
+   * default this replaces preserves.
+   */
+  private buildFlightDateFilter(
+    dateFrom: string | undefined,
+    dateTo: string | undefined,
+  ): { gte?: Date; lte?: Date } {
+    if (!dateFrom && !dateTo) {
+      const today = colomboToday();
+      return { gte: parseDateOnly(today), lte: parseDateOnly(addDays(today, 1)) };
+    }
+
+    return {
+      ...(dateFrom ? { gte: parseDateOnly(dateFrom) } : {}),
+      ...(dateTo ? { lte: parseDateOnly(dateTo) } : {}),
+    };
+  }
+
   /** BR-10: a shipment past Pending/Confirmed rejects edit (423). ARCHITECTURE §20: optimistic lock, stale version → 409. */
   async update(id: string, input: UpdateShipmentRequest, actor: RequestUser): Promise<Shipment> {
     const updated = await this.auditService.auditedTransaction(
@@ -186,6 +222,7 @@ export class ShipmentService {
             ...(changes.shipperId !== undefined ? { shipperId: changes.shipperId } : {}),
             ...(changes.consigneeId !== undefined ? { consigneeId: changes.consigneeId } : {}),
             ...(changes.commodityId !== undefined ? { commodityId: changes.commodityId } : {}),
+            ...(changes.serviceType !== undefined ? { serviceType: changes.serviceType } : {}),
             ...(changes.flightDate !== undefined
               ? { flightDate: parseDateOnly(changes.flightDate) }
               : {}),
@@ -321,6 +358,17 @@ export class ShipmentService {
       async (tx) => {
         const existing = await tx.shipment.findFirst({ where: { id, isDeleted: false } });
         if (!existing) throw new NotFoundError('Shipment not found');
+
+        // Cargo handling (box/weight) must be done before a shipment can be
+        // marked Departed — it's already physically loaded and gone.
+        if (
+          input.status === 'DEPARTED' &&
+          (existing.boxCount === null || existing.weightKg === null)
+        ) {
+          throw new BusinessRuleError(
+            'Box count and weight must be entered before this shipment can be marked Departed',
+          );
+        }
 
         let actualDepartureAt: Date | undefined;
         if (input.status === 'DEPARTED' && existing.actualDepartureAt === null) {

@@ -12,7 +12,7 @@ export function BuyingRateSection({ shipment }: { shipment: Shipment }) {
       <h2 className="font-medium">Airline buying rate</h2>
       <p className="text-muted-foreground mt-1 text-sm">
         Captured from the Rate Table at the moment you click below — a later rate change never
-        alters an already-captured value (BR-43).
+        alters an already-captured value.
       </p>
 
       <div className="mt-4 flex items-center gap-4">

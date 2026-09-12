@@ -6,6 +6,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { AttachmentsModule } from './attachments/attachments.module';
 import { AuditModule } from './audit/audit.module';
 import { CargoModule } from './cargo/cargo.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -78,6 +79,7 @@ import { StorageModule } from './storage/storage.module';
     PaymentModule,
     PrintingModule,
     DocumentsModule,
+    AttachmentsModule,
     CutoffModule,
     AnalyticsModule,
     HealthModule,
