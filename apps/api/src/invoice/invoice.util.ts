@@ -39,6 +39,7 @@ export interface InvoiceRow {
   shipment: {
     shipmentNo: string;
     mawbNo: string | null;
+    airline: { code: string };
     flightNo: string | null;
     flightDate: Date;
     boxCount: number | null;
@@ -57,6 +58,19 @@ function formatDateOnly(date: Date): string {
 
 function toDecimal(value: DecimalLike | string): Prisma.Decimal {
   return new Prisma.Decimal(value.toString());
+}
+
+function formatFlightForDoc(airlineCode: string | null | undefined, flightNo: string | null | undefined): string | null {
+  if (!flightNo) return null;
+  const code = (airlineCode || '').trim();
+  let fNo = flightNo.trim();
+  if (code && fNo.toUpperCase().startsWith(code.toUpperCase())) {
+    fNo = fNo.slice(code.length).trim();
+  }
+  if (/^\d+$/.test(fNo) && fNo.length < 4) {
+    fNo = fNo.padStart(4, '0');
+  }
+  return code ? `${code} ${fNo}` : fNo;
 }
 
 /** Money precision (DEVELOPMENT_RULES §5): decimal.js's default ROUND_HALF_UP, 2dp. */
@@ -191,7 +205,7 @@ export function toSharedInvoice(row: InvoiceRow): SharedInvoice {
     shipmentId: row.shipmentId,
     shipmentNo: row.shipment.shipmentNo,
     awbNumber: row.shipment.mawbNo,
-    flights: row.shipment.flightNo,
+    flights: formatFlightForDoc(row.shipment.airline?.code, row.shipment.flightNo),
     etdColombo: formatDateOnly(row.shipment.flightDate),
     destinationAirportCode: row.shipment.destinationAirport
       ? row.shipment.destinationAirport.code

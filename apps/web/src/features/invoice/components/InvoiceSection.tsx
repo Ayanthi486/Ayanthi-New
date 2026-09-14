@@ -43,6 +43,7 @@ function printInvoice(invoice: Invoice): void {
       <head>
         <title>Invoice ${escapeHtml(invoice.invoiceNo ?? '')}</title>
         <style>
+          @page { size: A4; margin: 15mm; }
           body { font-family: sans-serif; padding: 2rem; color: #111; }
           table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
           td, th { border: 1px solid #ccc; padding: 0.5rem; text-align: left; }

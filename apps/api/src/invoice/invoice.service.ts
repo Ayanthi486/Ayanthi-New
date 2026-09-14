@@ -19,6 +19,7 @@ const INVOICE_INCLUDE = {
       shipmentNo: true,
       mawbNo: true,
       flightNo: true,
+      airline: { select: { code: true } },
       flightDate: true,
       boxCount: true,
       weightKg: true,

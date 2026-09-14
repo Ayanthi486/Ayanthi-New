@@ -4,61 +4,67 @@
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --background: oklch(0.995 0.005 260); /* Very faint cool white */
+  --foreground: oklch(0.145 0.02 260); /* Deep slate */
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-
+  --card-foreground: oklch(0.145 0.02 260);
+  
   /* Hub Lanka brand accents, sampled from the official logo
-     (apps/web/public/assets/branding) — used only for the app header's
-     active/hover nav treatment, not the base shadcn palette. */
+     (apps/web/public/assets/branding) */
   --brand-navy: #273a85;
   --brand-navy-foreground: oklch(1 0 0);
   --brand-gold: #f7bf18;
 
-  /* AppHeader surface tokens — every one derived from --brand-navy (never
-     an unrelated color) so the header's brand/nav/profile regions read as
-     one restrained accent family instead of ad hoc per-component colors.
-     Kept intentionally light (4–14% mix) so the header stays a white,
-     enterprise surface with a tint, not a colored block. */
-  --nav-surface: color-mix(in oklch, var(--brand-navy) 5%, white);
-  --nav-surface-hover: color-mix(in oklch, var(--brand-navy) 10%, white);
-  --nav-border: color-mix(in oklch, var(--brand-navy) 14%, white);
+  --primary: var(--brand-navy);
+  --primary-foreground: oklch(1 0 0);
+  
+  /* Subtle gold tint for secondary/accent to bring warmth (charm) */
+  --secondary: color-mix(in srgb, var(--brand-gold) 15%, transparent);
+  --secondary-foreground: #8a6500;
+  
+  --muted: oklch(0.96 0.01 260);
+  --muted-foreground: oklch(0.55 0.02 260);
+  
+  --accent: color-mix(in srgb, var(--brand-gold) 15%, transparent);
+  --accent-foreground: #8a6500;
+  
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.92 0.01 260);
+  --input: oklch(0.92 0.01 260);
+  --ring: var(--brand-navy);
+
+  /* AppHeader surface tokens */
+  --nav-surface: color-mix(in srgb, var(--brand-navy) 4%, white);
+  --nav-surface-hover: color-mix(in srgb, var(--brand-navy) 8%, white);
+  --nav-border: color-mix(in srgb, var(--brand-navy) 12%, white);
   --nav-active: var(--brand-navy);
   --nav-active-foreground: var(--brand-navy-foreground);
-  --profile-surface: color-mix(in oklch, var(--brand-navy) 6%, white);
-  --profile-surface-hover: color-mix(in oklch, var(--brand-navy) 12%, white);
+  --profile-surface: color-mix(in srgb, var(--brand-navy) 5%, white);
+  --profile-surface-hover: color-mix(in srgb, var(--brand-navy) 10%, white);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --background: oklch(0.145 0.02 260);
+  --foreground: oklch(0.98 0.01 260);
+  --card: oklch(0.2 0.02 260);
+  --card-foreground: oklch(0.98 0.01 260);
+  
+  --primary: var(--brand-gold);
+  --primary-foreground: #4a3600;
+  
+  --secondary: color-mix(in srgb, var(--brand-navy) 30%, transparent);
+  --secondary-foreground: oklch(0.98 0.01 260);
+  
+  --muted: oklch(0.25 0.02 260);
+  --muted-foreground: oklch(0.7 0.02 260);
+  
+  --accent: color-mix(in srgb, var(--brand-navy) 40%, transparent);
+  --accent-foreground: oklch(0.98 0.01 260);
+  
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --border: oklch(0.3 0.02 260);
+  --input: oklch(0.3 0.02 260);
+  --ring: var(--brand-gold);
 }
 
 @theme inline {

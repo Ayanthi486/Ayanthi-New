@@ -7,28 +7,8 @@ export interface FieldConfigEntry {
 
 /** Read-only, populated live from the Shipment (PRD §9's "Populated from Shipment" column) — never editable here. */
 export const VIEW_MODEL_FIELDS: Record<DocumentType, FieldConfigEntry[]> = {
-  SECURITY_CLEARANCE: [
-    // Direct request: auto-populated from the preparer's account/Profile and
-    // fixed constants — no longer typed into fieldData, see FIELD_DATA_FIELDS
-    // below for what's still manual.
-    { key: 'fullName', label: 'Full Name of Shipper/Agent' },
-    { key: 'designation', label: 'Designation' },
-    { key: 'organizationName', label: 'Name of Organization' },
-    { key: 'nic', label: 'NIC No' },
-    { key: 'awbNo', label: 'AWB No' },
-    { key: 'cargoDescription', label: 'Description of Cargo' },
-    // Direct request: deliberately left blank ("keep space to enter"), not
-    // auto-filled from the shipment like every other field here.
-    { key: 'boxCount', label: 'Pieces' },
-    { key: 'weightKg', label: 'Weight (kg)' },
-    { key: 'flightNo', label: 'Flight No' },
-    { key: 'flightDate', label: 'Flight Date' },
-    { key: 'destination', label: 'Destination' },
-    { key: 'shipperName', label: 'Shipper' },
-    { key: 'certificationDate', label: 'Certification Date' },
-    { key: 'handoverDate', label: 'Handover Date' },
-    { key: 'takenChargeDate', label: 'Taken Charge Date' },
-  ],
+  SECURITY_CLEARANCE: [],
+
   AWB_STICKER: [
     { key: 'origin', label: 'Origin' },
     { key: 'awbNo', label: 'AWB No' },
@@ -76,14 +56,8 @@ export const VIEW_MODEL_FIELDS: Record<DocumentType, FieldConfigEntry[]> = {
 
 /** Manual fields (PRD §9's "Manual fields" column) — editable, saved as `fieldData`. */
 export const FIELD_DATA_FIELDS: Record<DocumentType, FieldConfigEntry[]> = {
-  SECURITY_CLEARANCE: [
-    { key: 'handoverEmployeeName', label: 'Handover — Name of Employee' },
-    { key: 'handoverSNo', label: 'Handover — S/NO' },
-    { key: 'handoverDesignation', label: 'Handover — Designation' },
-    { key: 'handoverNic', label: 'Handover — NIC No' },
-    { key: 'takenChargeName', label: 'Taken Charge By — Name' },
-    { key: 'takenChargeStaffNo', label: 'Taken Charge By — Staff No' },
-  ],
+  SECURITY_CLEARANCE: [],
+
   AWB_STICKER: [{ key: 'carrierName', label: 'Carrier (template selection)' }],
   ADF: [
     { key: 'shipperTel', label: 'Tel/Mobile' },
@@ -146,29 +120,8 @@ export const FIELD_DATA_FIELDS: Record<DocumentType, FieldConfigEntry[]> = {
   ],
   CDN: [
     { key: 'lorryTrailerNo', label: 'Lorry/Trailer No' },
-    { key: 'snBlNo', label: 'SN/(B/L) No' },
-    { key: 'tareWeightKg', label: 'Tare Wt (Kg)' },
-    { key: 'slpNo', label: 'SLP No' },
-    { key: 'agentSealNo', label: 'Agent Seal No' },
     { key: 'driverName', label: 'Name of Driver' },
-    { key: 'cleanerName', label: 'Name of Cleaner' },
-    { key: 'netWeightKg', label: 'Net Wt (Kg)' },
-    { key: 'cubeM3', label: 'Cube (m3)' },
     { key: 'declarantName', label: 'Name of Declarant' },
-    { key: 'telephoneNo', label: 'Telephone No' },
-    { key: 'voyageNoDate', label: 'Voyage No/Date' },
-    { key: 'vessel', label: 'Ex-Vessel' },
-    { key: 'portLoading', label: 'Port Loading' },
-    { key: 'portDischarge', label: 'Port of Discharge' },
-    { key: 'containerMarksAndNumbers', label: 'Marks & Numbers/Container No' },
-    { key: 'descriptionOfGoods', label: 'Description of Goods' },
-    { key: 'containerType', label: 'Type of Container' },
-    { key: 'containerHeight', label: 'Container Height' },
-    { key: 'containerLength', label: 'Container Length' },
-    { key: 'reeferTemperature', label: 'Reefer Temperature Required' },
-    { key: 'placeOfDelivery', label: 'Place of Delivery (CY/CFS/DOOR)' },
-    { key: 'placeOfReceipt', label: 'Place of Receipt (CY/PORT/CFS/DOOR)' },
-    { key: 'remarks', label: 'Remarks' },
   ],
   CUSDEC: [],
 };

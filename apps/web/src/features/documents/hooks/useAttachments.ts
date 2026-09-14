@@ -18,7 +18,7 @@ export function useAttachments(shipmentId: string) {
 export function useUploadAttachment(shipmentId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (file: File) => uploadAttachment(shipmentId, file),
+    mutationFn: ({ file, category }: { file: File; category: string }) => uploadAttachment(shipmentId, file, category),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: attachmentsKey(shipmentId) }),
   });
 }

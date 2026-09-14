@@ -32,7 +32,7 @@ import { InvoiceSection } from '@/features/invoice/components/InvoiceSection';
 import { ApiClientError } from '@/lib/apiClient';
 import { useAuthStore } from '@/lib/authStore';
 import { useToastStore } from '@/lib/toastStore';
-import { cn } from '@/lib/utils';
+import { cn, printFileBlob } from '@/lib/utils';
 
 /** One tab per non-document key, alongside the five PRD §9 document types. */
 type ExtraTabKey = 'ATTACHMENTS' | 'COST_SHEET' | 'INVOICE';
@@ -86,25 +86,25 @@ export function DocumentsSection({ shipmentId }: { shipmentId: string }) {
 
   let content: ReactNode;
   if (activeTab === 'ATTACHMENTS') {
-    content = <AttachmentsTab shipmentId={shipmentId} />;
+    content = <AttachmentsTab shipmentId={shipmentId} category="OTHER" accept="application/pdf,image/jpeg,image/png" description="Supporting files for this shipment — customs forms, correspondence, scans (PDF, JPEG or PNG)." />;
   } else if (activeTab === 'COST_SHEET') {
     content = <CostSheetSection shipmentId={shipmentId} />;
   } else if (activeTab === 'INVOICE') {
     content = <InvoiceSection shipmentId={shipmentId} />;
   } else if (readinessQuery.isLoading) {
     content = <p className="text-muted-foreground text-sm">Loading…</p>;
-  } else if (readinessQuery.data && !readinessQuery.data.ready) {
+  } else if (readinessQuery.data && !readinessQuery.data.ready && !['SECURITY_CLEARANCE', 'CDN'].includes(activeTab)) {
     // BR-07: the exact confirmed message, never reworded.
     content = (
       <p className="text-destructive text-sm">
         Cannot generate document. Please enter Box and Weight information.
       </p>
     );
-  } else if (readinessQuery.data?.ready) {
+  } else if (readinessQuery.data) {
     content = (UPLOAD_DOCUMENT_TYPES as readonly DocumentType[]).includes(activeTab) ? (
-      <UploadDocumentTab key={activeTab} shipmentId={shipmentId} type={activeTab} />
+      <AttachmentsTab key={activeTab} shipmentId={shipmentId} category={activeTab} accept="application/pdf,image/jpeg,image/png" description={`Upload ${DOCUMENT_TAB_LABELS[activeTab as DocumentType]} files and pictures (PDF, JPEG or PNG).`} />
     ) : (
-      <DocumentTab key={activeTab} shipmentId={shipmentId} type={activeTab} />
+      <DocumentTab key={activeTab} shipmentId={shipmentId} type={activeTab as DocumentType} />
     );
   }
 
@@ -159,6 +159,19 @@ function UploadDocumentTab({ shipmentId, type }: { shipmentId: string; type: Doc
       },
       // Resets the file input so selecting the same file again still fires onChange.
       onSettled: () => setFileInputKey((key) => key + 1),
+    });
+  };
+
+  const handlePrint = (document: ShipmentDocument) => {
+    const printWindow = window.open('about:blank', '_blank');
+    downloadMutation.mutate(document.id, {
+      onSuccess: (blob) => {
+        printFileBlob(blob, printWindow);
+      },
+      onError: (error) => {
+        printWindow?.close();
+        showToast(error instanceof ApiClientError ? error.message : 'Unable to print this document.');
+      },
     });
   };
 
@@ -226,6 +239,13 @@ function UploadDocumentTab({ shipmentId, type }: { shipmentId: string; type: Doc
             onClick={() => handleOpen(document)}
           >
             {downloadMutation.isPending ? 'Opening…' : 'Print'}
+          </Button>
+          <Button
+            variant="outline"
+            disabled={downloadMutation.isPending}
+            onClick={() => handlePrint(document)}
+          >
+            {downloadMutation.isPending ? 'Preparing…' : 'Print'}
           </Button>
           <Button
             variant="outline"
@@ -323,11 +343,7 @@ const STATUS_STYLES: Record<'DRAFT' | 'ISSUED', string> = {
  * once the fetch resolves as long as the window itself opened up front.
  */
 function openPreparingWindow(): Window | null {
-  const printWindow = window.open('', '_blank', 'noopener,noreferrer');
-  printWindow?.document.write(
-    '<p style="font-family:sans-serif;padding:2rem;color:#555;">Preparing document…</p>',
-  );
-  return printWindow;
+  return window.open('about:blank', '_blank');
 }
 
 function DocumentDetail({
@@ -356,7 +372,7 @@ function DocumentDetail({
   const isPdfType = (PDF_DOCUMENT_TYPES as readonly DocumentType[]).includes(type);
   const hasFieldData = FIELD_DATA_FIELDS[type].length > 0;
   // BR-63: the only type with no rendered output at all — no Preview, no Print.
-  const hasRenderedOutput = type !== 'ADF';
+  const hasRenderedOutput = !['ADF', 'AWB', 'CUSDEC'].includes(type as string);
   const printLabel = type === 'AWB_STICKER' ? 'Print Sticker' : 'Print';
 
   const handleEditFields = () => {
@@ -403,11 +419,10 @@ function DocumentDetail({
     }
     printMutation.mutate(undefined, {
       onSuccess: ({ html }) => {
-        printWindow.document.open();
-        printWindow.document.write(html);
-        printWindow.document.close();
-        printWindow.focus();
-        printWindow.print();
+        const fullHtml = html + `<script>window.onload = () => setTimeout(() => { window.print(); }, 200);</script>`;
+        const blob = new Blob([fullHtml], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        printWindow.location.href = url;
       },
       onError: (error) => {
         printWindow.close();

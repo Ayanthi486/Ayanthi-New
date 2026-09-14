@@ -104,7 +104,7 @@ describe('ProfilePage', () => {
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
   });
 
-  it('shows Save once the ID card no is edited, and saves it via PATCH /me alongside full name', async () => {
+  it('shows Save once the NIC No is edited, and saves it via PATCH /me alongside full name', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string, init?: RequestInit) => {
@@ -118,8 +118,8 @@ describe('ProfilePage', () => {
     );
     renderProfilePage();
 
-    expect(screen.getByLabelText('ID card no')).toHaveValue('');
-    fireEvent.change(screen.getByLabelText('ID card no'), { target: { value: '912345678V' } });
+    expect(screen.getByLabelText('NIC No')).toHaveValue('');
+    fireEvent.change(screen.getByLabelText('NIC No'), { target: { value: '912345678V' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => {

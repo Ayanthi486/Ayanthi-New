@@ -1,4 +1,6 @@
 import {
+  Body,
+
   Controller,
   Delete,
   Get,
@@ -48,12 +50,14 @@ export class AttachmentsController {
   async upload(
     @Param('shipmentId') shipmentId: string,
     @UploadedFile() file: Express.Multer.File | undefined,
+@Body('category') category: string,
     @CurrentUser() actor: RequestUser,
   ): Promise<ShipmentAttachment> {
     if (!file) throw new ValidationError('A file is required');
     return this.attachmentsService.upload(
       shipmentId,
       { buffer: file.buffer, mimetype: file.mimetype, originalname: file.originalname },
+      category || 'OTHER',
       actor,
     );
   }

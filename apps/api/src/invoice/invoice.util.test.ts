@@ -211,6 +211,7 @@ describe('invoice.util', () => {
       shipment: {
         shipmentNo: 'HUB 000001',
         mawbNo: '157 0659 8944',
+        airline: { code: 'QR' },
         flightNo: 'QR0655/QR0123',
         flightDate: new Date('2026-08-04T00:00:00.000Z'),
         boxCount: 26,
@@ -247,7 +248,7 @@ describe('invoice.util', () => {
       const shared = toSharedInvoice(baseRow);
       expect(shared.shipmentNo).toBe('HUB 000001');
       expect(shared.awbNumber).toBe('157 0659 8944');
-      expect(shared.flights).toBe('QR0655/QR0123');
+      expect(shared.flights).toBe('QR 0655/QR0123');
       expect(shared.etdColombo).toBe('2026-08-04');
       expect(shared.grossWeightKg).toBe('444.50');
       expect(shared.dueDate).toBe('2026-08-09');

@@ -36,6 +36,7 @@ const ROLE_PERMISSIONS: Record<RoleName, PermissionKey[]> = {
     'masterdata.flight.create',
     'masterdata.shipper.create',
     'masterdata.consignee.create',
+    'masterdata.manage',
     'masterdata.view',
     'shipment.view',
     'shipment.mawb.copy',

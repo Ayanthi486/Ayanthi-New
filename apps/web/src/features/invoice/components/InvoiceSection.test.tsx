@@ -169,7 +169,7 @@ describe('InvoiceSection', () => {
     renderSection();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument());
 
-    const input = screen.getByLabelText('Invoice No') as HTMLInputElement;
+    const input = screen.getByLabelText('Invoice No');
     expect(input).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add line' })).not.toBeInTheDocument();

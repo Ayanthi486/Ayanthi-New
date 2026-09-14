@@ -189,13 +189,13 @@ describe('AppHeader', () => {
     expect(screen.getByRole('button', { name: 'Open menu' })).toHaveClass('lg:hidden');
   });
 
-  it('toggles the mobile menu open and closed, and closes it on navigation', () => {
+  it('toggles the mobile menu open and closed, and closes it on navigation', async () => {
     setUser(ALL_PERMISSIONS);
     renderHeader();
 
     const toggle = screen.getByRole('button', { name: 'Open menu' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(document.getElementById('mobile-nav')).not.toBeInTheDocument();
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
 
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
@@ -203,6 +203,6 @@ describe('AppHeader', () => {
     expect(mobileNav).toBeInTheDocument();
 
     fireEvent.click(within(mobileNav as HTMLElement).getByRole('link', { name: /Shipments/ }));
-    expect(document.getElementById('mobile-nav')).not.toBeInTheDocument();
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
   });
 });

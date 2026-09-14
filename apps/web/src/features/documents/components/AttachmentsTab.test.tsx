@@ -13,7 +13,7 @@ function renderTab() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <AttachmentsTab shipmentId="shipment-1" />
+      <AttachmentsTab shipmentId="shipment-1" category="OTHER_DOCUMENTS" accept="application/pdf,image/jpeg,image/png" description="Supporting files for this shipment (PDF, JPEG or PNG)." />
     </QueryClientProvider>,
   );
 }
@@ -24,6 +24,7 @@ const attachmentFixture = {
   filename: 'customs-form.pdf',
   contentType: 'application/pdf',
   size: 20480,
+  category: 'OTHER_DOCUMENTS',
   uploadedByUserId: 'user-1',
   createdAt: '2026-08-01T00:00:00.000Z',
 };

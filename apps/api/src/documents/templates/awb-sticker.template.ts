@@ -15,7 +15,7 @@ export function renderAwbStickerHtml(
   },
   fieldData: { carrierName?: string },
 ): string {
-  const pageCss = `@page { size: 12cm 8cm; margin: 0; } body { width: 12cm; height: 8cm; padding: 4mm; }`;
+  const pageCss = `@page { size: A4; margin: 0; } body { padding: 2cm; max-width: 21cm; margin: 0 auto; }`;
   const body = `
 <div style="text-align:center; font-weight:bold; font-size:13pt; margin-bottom:6px;">
   ${escapeHtml(fieldData.carrierName || 'CARRIER')}

@@ -132,8 +132,12 @@ export class DocumentsController {
     @CurrentUser() actor: RequestUser,
   ): Promise<StreamableFile> {
     const { buffer, filename } = await this.documentsService.downloadFile(id, actor);
+    const ext = filename.split('.').pop()?.toLowerCase();
+    const type = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' 
+               : ext === 'png' ? 'image/png' 
+               : 'application/pdf';
     return new StreamableFile(buffer, {
-      type: 'application/pdf',
+      type,
       disposition: `attachment; filename="${filename}"`,
     });
   }

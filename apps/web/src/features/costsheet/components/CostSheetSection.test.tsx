@@ -93,8 +93,8 @@ describe('CostSheetSection', () => {
     await waitFor(() => {
       expect(screen.getByText('Total: LKR 17629.54')).toBeInTheDocument();
     });
-    expect(screen.getByLabelText('SL Customs Receipts')).toHaveValue('1800.00');
-    expect(screen.getByLabelText('Transport')).toHaveValue('12209.54');
+    expect(screen.getByText('LKR 1800.00')).toBeInTheDocument();
+    expect(screen.getByText('LKR 12209.54')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Release' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
   });
@@ -131,7 +131,8 @@ describe('CostSheetSection', () => {
     renderSection();
 
     await waitFor(() => {
-      expect(screen.getByLabelText('SL Customs Receipts')).toBeDisabled();
+      expect(screen.getByText('LKR 1800.00')).toBeInTheDocument();
+      expect(screen.queryByLabelText('SL Customs Receipts')).not.toBeInTheDocument();
     });
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
@@ -159,10 +160,12 @@ describe('CostSheetSection', () => {
     renderSection();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument());
 
-    const input = screen.getByLabelText('SL Customs Receipts') as HTMLInputElement;
-    expect(input).toBeDisabled();
+    expect(screen.queryByLabelText('SL Customs Receipts')).not.toBeInTheDocument();
+    expect(screen.getByText('LKR 1800.00')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    
+    const input = screen.getByLabelText('SL Customs Receipts');
     expect(input).not.toBeDisabled();
     expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
   });
@@ -218,18 +221,21 @@ describe('CostSheetSection', () => {
     renderSection();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument());
 
-    const input = screen.getByLabelText('SL Customs Receipts') as HTMLInputElement;
-    expect(input).toBeDisabled();
+    expect(screen.queryByLabelText('SL Customs Receipts')).not.toBeInTheDocument();
+    expect(screen.getByText('LKR 1800.00')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    
+    const input = screen.getByLabelText('SL Customs Receipts');
     expect(input).not.toBeDisabled();
     fireEvent.change(input, { target: { value: '9999' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
-    expect(screen.getByLabelText('SL Customs Receipts')).toHaveValue('1800.00');
+    expect(screen.queryByLabelText('SL Customs Receipts')).not.toBeInTheDocument();
+    expect(screen.getByText('LKR 1800.00')).toBeInTheDocument();
   });
 
   it('Print opens a new window and writes a printable summary into it', async () => {

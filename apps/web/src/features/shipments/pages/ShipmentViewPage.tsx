@@ -16,6 +16,7 @@ import {
   useUpdateShipment,
 } from '@/features/shipments/hooks/useShipments';
 import { ApiClientError } from '@/lib/apiClient';
+import { displayFlight } from '@/lib/utils';
 
 /** Once a shipment is past Pending/Confirmed, the general edit path locks (BR-10) — matches shipment.service.ts's ACTIVE_STATUSES. */
 const ACTIVE_STATUSES: Shipment['status'][] = ['PENDING', 'CONFIRMED'];
@@ -45,8 +46,26 @@ const FIELDS: {
     group: 'Shipment',
     format: (value) => SERVICE_TYPE_LABELS[value as Shipment['serviceType']],
   },
+  { label: 'Commodity', key: 'commodityName', group: 'Shipment' },
+  {
+    label: 'Box count',
+    key: 'boxCount',
+    group: 'Shipment',
+    render: (shipment) => <CargoValueCell shipment={shipment} value={shipment.boxCount ?? '—'} />,
+  },
+  {
+    label: 'Weight (kg)',
+    key: 'weightKg',
+    group: 'Shipment',
+    render: (shipment) => <CargoValueCell shipment={shipment} value={shipment.weightKg ?? '—'} />,
+  },
   { label: 'Airline', key: 'airlineName', group: 'Flight' },
-  { label: 'Flight No', key: 'flightNo', group: 'Flight' },
+  { 
+    label: 'Flight No', 
+    key: 'flightNo', 
+    group: 'Flight',
+    render: (shipment) => displayFlight(shipment.airlineCode, shipment.flightNo)
+  },
   { label: 'Flight Date', key: 'flightDate', group: 'Flight' },
   { label: 'Dep Time', key: 'depTime', group: 'Flight' },
   { label: 'Handling Date', key: 'handlingDate', group: 'Flight' },
@@ -58,24 +77,12 @@ const FIELDS: {
     format: (value) => (value ? new Date(value as string).toLocaleString() : '—'),
   },
   { label: 'Shipper', key: 'shipperName', group: 'Cargo & Parties' },
-  { label: 'Shipper Address', key: 'shipperAddress', group: 'Cargo & Parties' },
-  { label: 'Shipper Contact', key: 'shipperContact', group: 'Cargo & Parties' },
   { label: 'Consignee', key: 'consigneeName', group: 'Cargo & Parties' },
+  { label: 'Shipper Address', key: 'shipperAddress', group: 'Cargo & Parties' },
   { label: 'Consignee Address', key: 'consigneeAddress', group: 'Cargo & Parties' },
+  { label: 'Shipper Contact', key: 'shipperContact', group: 'Cargo & Parties' },
   { label: 'Consignee Contact', key: 'consigneeContact', group: 'Cargo & Parties' },
-  { label: 'Commodity', key: 'commodityName', group: 'Cargo & Parties' },
-  {
-    label: 'Box count',
-    key: 'boxCount',
-    group: 'Cargo & Parties',
-    render: (shipment) => <CargoValueCell shipment={shipment} value={shipment.boxCount ?? '—'} />,
-  },
-  {
-    label: 'Weight (kg)',
-    key: 'weightKg',
-    group: 'Cargo & Parties',
-    render: (shipment) => <CargoValueCell shipment={shipment} value={shipment.weightKg ?? '—'} />,
-  },
+
 ];
 
 export function ShipmentViewPage() {
@@ -115,26 +122,66 @@ export function ShipmentViewPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+      {/* Header and Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold">{shipment.shipmentNo}</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{shipment.shipmentNo}</h1>
           <StatusBadge status={shipment.status} />
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            void navigate('/shipments');
-          }}
-        >
-          Back to schedule
-        </Button>
+        
+        <div className="flex items-center gap-2">
+          <RequirePermission permission="shipment.update">
+            {!isEditLocked && !isEditing && (
+              <Button variant="outline" size="sm" onClick={() => setSearchParams({ edit: '1' })}>
+                Edit
+              </Button>
+            )}
+          </RequirePermission>
+
+          <RequirePermission permission="shipment.delete.own">
+            {!isDeleteLocked && (
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={deleteMutation.isPending}
+                onClick={() =>
+                  deleteMutation.mutate(shipment.id, {
+                    onSuccess: () => {
+                      void navigate('/shipments');
+                    },
+                  })
+                }
+              >
+                Delete
+              </Button>
+            )}
+          </RequirePermission>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              void navigate('/shipments');
+            }}
+          >
+            Back to schedule
+          </Button>
+        </div>
       </div>
+
+      {deleteMutation.isError && (
+        <p className="text-destructive text-sm bg-destructive/10 p-3 rounded-md">
+          {deleteMutation.error instanceof ApiClientError
+            ? deleteMutation.error.message
+            : 'Unable to delete this shipment.'}
+        </p>
+      )}
 
       {isEditLocked && <LockedBanner status={shipment.status} />}
 
+      {/* Main Content */}
       {isEditing && !isEditLocked ? (
-        <div className="border-border bg-card rounded-lg border p-6">
+        <div className="border-border bg-card rounded-xl border p-6 shadow-sm">
           <ShipmentForm
             shipment={shipment}
             onSubmit={(values) => handleUpdate(values as UpdateShipmentRequest)}
@@ -154,42 +201,40 @@ export function ShipmentViewPage() {
           />
         </div>
       ) : (
-        <div className="border-border bg-card flex flex-col gap-6 rounded-lg border p-6">
-          {FIELD_GROUP_ORDER.map((group, index) => (
-            <div key={group} className={index > 0 ? 'border-t pt-6' : undefined}>
-              <h3 className="text-muted-foreground mb-3 text-xs font-semibold tracking-wide uppercase">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {FIELD_GROUP_ORDER.map((group) => (
+            <div key={group} className="border-border bg-card flex flex-col rounded-xl border p-5 shadow-sm">
+              <h3 className="text-brand-navy border-b border-border/50 pb-3 mb-4 text-xs font-bold tracking-wider uppercase">
                 {group}
               </h3>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                {FIELDS.filter((field) => field.group === group).map((field) => (
-                  <div key={field.key}>
-                    <div className="text-muted-foreground text-xs">{field.label}</div>
-                    <div className="text-sm whitespace-pre-line">
-                      {field.render
-                        ? field.render(shipment)
-                        : field.format
-                          ? field.format(shipment[field.key])
-                          : String(shipment[field.key] ?? '—')}
+              <div className="grid grid-cols-2 gap-y-5 gap-x-4">
+                {FIELDS.filter((field) => field.group === group).map((field) => {
+                  return (
+                    <div key={field.key}>
+                      <div className="text-muted-foreground mb-1 text-[11px] font-medium tracking-wide uppercase">{field.label}</div>
+                      <div className="text-foreground text-sm font-medium whitespace-pre-line leading-relaxed">
+                        {field.render
+                          ? field.render(shipment)
+                          : field.format
+                            ? field.format(shipment[field.key])
+                            : String(shipment[field.key] ?? '—')}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))}
         </div>
       )}
 
+      {/* Optional Sections */}
       {shipment.status === 'PENDING' && (
         <RequirePermission permission="rate.buying.enter">
           <BuyingRateSection shipment={shipment} />
         </RequirePermission>
       )}
 
-      {/* Security Clearance/AWB Sticker/CDN/Cost Sheet/ADF/AWB/Shipment
-          Documents/Freight Invoice, unified into one tab bar — each tab
-          gates itself on its own permission (see DocumentsSection.tsx);
-          this outer check just covers "can this viewer see any of them at
-          all," matching the narrowest of the tabs' own individual gates. */}
       <RequirePermission
         permission={[
           'documents.manage',
@@ -201,42 +246,6 @@ export function ShipmentViewPage() {
       >
         <DocumentsSection shipmentId={shipment.id} />
       </RequirePermission>
-
-      <div className="flex flex-wrap gap-2">
-        <RequirePermission permission="shipment.update">
-          {!isEditLocked && !isEditing && (
-            <Button variant="outline" onClick={() => setSearchParams({ edit: '1' })}>
-              Edit
-            </Button>
-          )}
-        </RequirePermission>
-
-        <RequirePermission permission="shipment.delete.own">
-          {!isDeleteLocked && (
-            <Button
-              variant="destructive"
-              disabled={deleteMutation.isPending}
-              onClick={() =>
-                deleteMutation.mutate(shipment.id, {
-                  onSuccess: () => {
-                    void navigate('/shipments');
-                  },
-                })
-              }
-            >
-              Delete
-            </Button>
-          )}
-        </RequirePermission>
-      </div>
-
-      {deleteMutation.isError && (
-        <p className="text-destructive text-sm">
-          {deleteMutation.error instanceof ApiClientError
-            ? deleteMutation.error.message
-            : 'Unable to delete this shipment.'}
-        </p>
-      )}
 
       {showConflict && (
         <ConflictDialog

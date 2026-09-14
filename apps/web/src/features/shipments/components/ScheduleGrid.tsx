@@ -6,6 +6,7 @@ import { DataTable } from '@/components/shared/DataTable';
 import { Button } from '@/components/ui/button';
 import { CargoValueCell } from '@/features/shipments/components/CargoValueCell';
 import { ChangeStatusControl } from '@/features/shipments/components/ChangeStatusControl';
+import { displayFlight } from '@/lib/utils';
 import { useToastStore } from '@/lib/toastStore';
 
 /** BR-22/AC-08: fixed tracking portal, opened in a new tab with noopener,noreferrer. */
@@ -51,10 +52,7 @@ export function ScheduleGrid({
       {
         id: 'flight',
         header: 'FLIGHT',
-        // Airline code + flight number together (e.g. "EK 0654"), matching
-        // the Add Shipment form's combined FLIGHT field.
-        cell: ({ row }) =>
-          row.original.flightNo ? `${row.original.airlineCode} ${row.original.flightNo}` : '—',
+        cell: ({ row }) => displayFlight(row.original.airlineCode, row.original.flightNo),
       },
       { header: 'DATE', accessorKey: 'flightDate' },
       { header: 'SHIPPER', accessorKey: 'shipperName' },

@@ -39,7 +39,7 @@ describe('DocumentsSection', () => {
     // Security Clearance/AWB Sticker/CDN are Executive-only, gated on
     // documents.basic.manage — this suite mostly exercises those three
     // tabs, so the default test user holds both that and the broader
-    // documents.manage (needed for ADF/AWB/Shipment Documents).
+    // documents.manage (needed for ADF/AWB/Other Documents).
     useAuthStore.setState({
       permissions: new Set(['documents.manage', 'documents.basic.manage']),
     });
@@ -67,6 +67,7 @@ describe('DocumentsSection', () => {
     );
 
     renderSection();
+    fireEvent.click(screen.getByText('AWB Sticker'));
 
     await waitFor(() => {
       expect(
@@ -442,8 +443,9 @@ describe('DocumentsSection', () => {
           'CDN',
           'Cost Sheet',
           'ADF',
-          'AWB',
-          'Shipment Documents',
+           'AWB',
+          'Box Picture',
+          'Other Documents',
           'CUSDEC',
           'Freight Invoice',
         ].includes(label ?? ''),
@@ -455,8 +457,9 @@ describe('DocumentsSection', () => {
       'CDN',
       'Cost Sheet',
       'ADF',
-      'AWB',
-      'Shipment Documents',
+       'AWB',
+          'Box Picture',
+      'Other Documents',
       'CUSDEC',
       'Freight Invoice',
     ]);
@@ -484,7 +487,7 @@ describe('DocumentsSection', () => {
     expect(screen.queryByRole('button', { name: 'Freight Invoice' })).not.toBeInTheDocument();
   });
 
-  it('without documents.basic.manage (e.g. Manager), Security Clearance/AWB Sticker/CDN are hidden but ADF/AWB/Shipment Documents remain', async () => {
+  it('without documents.basic.manage (e.g. Manager), Security Clearance/AWB Sticker/CDN are hidden but ADF/AWB/Other Documents remain', async () => {
     useAuthStore.setState({ permissions: new Set(['documents.manage']) });
     vi.stubGlobal(
       'fetch',
@@ -504,7 +507,7 @@ describe('DocumentsSection', () => {
     expect(screen.queryByRole('button', { name: 'AWB Sticker' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'CDN' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'AWB' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Shipment Documents' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Other Documents' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'CUSDEC' })).toBeInTheDocument();
   });
 

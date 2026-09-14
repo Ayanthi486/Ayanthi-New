@@ -28,7 +28,7 @@ import {
 } from '@/features/masterdata/hooks/useMasterdata';
 import { ApiClientError } from '@/lib/apiClient';
 import { useAuthStore } from '@/lib/authStore';
-import { formatFlightNumber, splitFlightNumber } from '@/lib/utils';
+import { formatFlightNumber, splitFlightNumber, displayFlight } from '@/lib/utils';
 
 type FormValues = CreateShipmentRequest & { version?: number };
 
@@ -181,6 +181,7 @@ export function ShipmentForm({
           commodityId: '',
           serviceType: '' as ServiceType,
           flightDate: '',
+          handlingDate: new Date().toISOString().split('T')[0],
           depTime: '',
         },
   });
@@ -388,7 +389,7 @@ export function ShipmentForm({
                   const airline = airlinesQuery.data?.find((a) => a.id === flight.airlineId);
                   return {
                     id: flight.id,
-                    name: airline ? `${airline.code} ${flight.flightNo}` : flight.flightNo,
+                    name: airline ? displayFlight(airline.code, flight.flightNo) : flight.flightNo,
                   };
                 }) ?? []
               }
@@ -451,7 +452,7 @@ export function ShipmentForm({
                 setValue('airlineId', airline.id, { shouldValidate: true, shouldDirty: true });
                 setValue('flightNo', created.flightNo, { shouldValidate: true, shouldDirty: true });
                 setValue('depTime', created.depTime, { shouldValidate: true, shouldDirty: true });
-                return { id: created.id, name: `${airline.code} ${created.flightNo}` };
+                return { id: created.id, name: displayFlight(airline.code, created.flightNo) };
               }}
             />
           </Field>

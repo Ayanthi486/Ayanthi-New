@@ -10,6 +10,9 @@ import { RequirePermission } from '@/app/RequirePermission';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useShipment } from '@/features/shipments/hooks/useShipments';
+import type { Shipment } from '@hub-lanka/shared';
+import { LOGO_BASE64 } from './logo';
 import {
   useApproveCostSheet,
   useCostSheet,
@@ -20,42 +23,130 @@ import {
 import { ApiClientError } from '@/lib/apiClient';
 import { escapeHtml } from '@/lib/utils';
 
-function printCostSheet(costSheet: CostSheet): void {
-  const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+const formatAmount = (val: string | number | null | undefined): string => {
+  if (val === null || val === undefined || val === '') return '';
+  const strVal = String(val);
+  const num = parseFloat(strVal.replace(/,/g, ''));
+  if (isNaN(num)) return strVal;
+  return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
+};
+
+
+
+function printCostSheet(costSheet: CostSheet, shipment: Shipment): void {
+  const printWindow = window.open('about:blank', '_blank');
   if (!printWindow) return;
 
   const rows = COST_SHEET_LINE_TYPES.map((type) => {
-    const amount = costSheet.lines.find((line) => line.lineType === type)?.amount ?? '0.00';
-    return `<tr><td>${escapeHtml(COST_SHEET_LINE_LABELS[type])}</td><td style="text-align:right">${escapeHtml(amount)}</td></tr>`;
+    const amount = costSheet.lines.find((line) => line.lineType === type)?.amount;
+    const displayAmount = amount ? formatAmount(amount) : '0.00';
+    return `<tr><td style="border: 1px solid #000; padding: 4px;">${escapeHtml(COST_SHEET_LINE_LABELS[type])}</td><td style="border: 1px solid #000; padding: 4px; text-align:right;">${escapeHtml(displayAmount)}</td></tr>`;
   }).join('');
 
-  printWindow.document.write(`
+  const formatFlightDate = (dateString: string | null | undefined): string => {
+    if (!dateString) return '';
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return dateString;
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}.${month}.${year}`;
+  };
+
+  const flightStr = shipment.flightNo ? `${escapeHtml(shipment.flightNo)} - ${formatFlightDate(shipment.flightDate)}` : formatFlightDate(shipment.flightDate);
+
+  const html = `<!doctype html>
     <html>
       <head>
         <title>Cost Sheet</title>
         <style>
-          body { font-family: sans-serif; padding: 2rem; color: #111; }
-          table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-          td, th { border: 1px solid #ccc; padding: 0.5rem; text-align: left; }
-          h1 { margin-bottom: 0.25rem; }
+          @page { size: A4 portrait; margin: 15mm; }
+          body { font-family: Arial, sans-serif; margin: 0; padding: 0; color: #000; font-size: 10pt; }
+          table { width: 100%; border-collapse: collapse; }
+          td, th { border: 1px solid #000; padding: 4px; text-align: left; vertical-align: middle; }
         </style>
       </head>
       <body>
-        <h1>Cost Sheet</h1>
-        <p>S/N No: ${escapeHtml(costSheet.snNo ?? '—')}</p>
-        <table>
-          <thead><tr><th>Line</th><th>Amount (LKR)</th></tr></thead>
-          <tbody>${rows}</tbody>
+        <table style="width: 100%; border: none; margin-bottom: 10px;">
+          <tr>
+            <td style="border: none; padding: 0; text-align: left; vertical-align: top;">
+              <div style="font-size: 16pt; font-weight: bold; margin-bottom: 2px; font-family: 'Arial Black', Impact, sans-serif;">H U B Lanka (Pvt) Ltd</div>
+              <div style="font-size: 9pt; margin-bottom: 2px;">Terminal 3-1F--17 Air Cargo Village,Katunayake,Sri Lanka.</div>
+              <div style="font-size: 9pt;">M +94760120210 |T +94112254879 | E-mail : airportoperations@hublanka.lk</div>
+            </td>
+            <td style="border: none; padding: 0; text-align: right; vertical-align: top;">
+              <img src="${LOGO_BASE64}" style="height: 60px;" alt="Logo" />
+            </td>
+          </tr>
         </table>
-        <p><strong>Total: LKR ${escapeHtml(costSheet.total)}</strong></p>
-        <p>Remarks: ${escapeHtml(costSheet.remarks ?? '—')}</p>
-        <p>Shift Leader signature: ${escapeHtml(costSheet.shiftLeaderSignature ?? '—')}</p>
+
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 9.5pt;">
+          <tr>
+            <th colspan="4" style="text-align: center; font-size: 11pt; font-weight: bold; padding: 4px; border: 1px solid #000; background-color: #e5e7eb;">
+              Shipment Cost Sheet
+            </th>
+          </tr>
+          <tr>
+            <td style="width: 25%; font-weight: bold; border: 1px solid #000; padding: 4px;">S/N No</td>
+            <td style="width: 25%; border: 1px solid #000; padding: 4px;">${escapeHtml(costSheet.snNo ?? '')}</td>
+            <td style="width: 25%; font-weight: bold; border: 1px solid #000; padding: 4px;">Commodity</td>
+            <td style="width: 25%; border: 1px solid #000; padding: 4px;">${escapeHtml(shipment.commodityName ?? '')}</td>
+          </tr>
+          <tr>
+            <td style="font-weight: bold; border: 1px solid #000; padding: 4px;">MAWB No</td>
+            <td style="border: 1px solid #000; padding: 4px;">${escapeHtml(shipment.mawbNo ?? '')}</td>
+            <td style="font-weight: bold; border: 1px solid #000; padding: 4px;">Boxes</td>
+            <td style="border: 1px solid #000; padding: 4px;">${escapeHtml(shipment.boxCount ?? '')}</td>
+          </tr>
+          <tr>
+            <td style="font-weight: bold; border: 1px solid #000; padding: 4px;">Flight No & Date</td>
+            <td style="border: 1px solid #000; padding: 4px;">${flightStr}</td>
+            <td style="font-weight: bold; border: 1px solid #000; padding: 4px;">Weight</td>
+            <td style="border: 1px solid #000; padding: 4px;">${escapeHtml(shipment.weightKg ?? '')} KGS</td>
+          </tr>
+          <tr>
+            <td style="font-weight: bold; border: 1px solid #000; padding: 4px;">Shipper Name</td>
+            <td style="border: 1px solid #000; padding: 4px;">${escapeHtml(shipment.shipperName ?? '')}</td>
+            <td style="font-weight: bold; border: 1px solid #000; padding: 4px;">Cusdec No</td>
+            <td style="border: 1px solid #000; padding: 4px;">${escapeHtml(shipment.cusdecNo ?? '')}</td>
+          </tr>
+          <tr>
+            <td style="font-weight: bold; border: 1px solid #000; padding: 4px;">Consignee Name</td>
+            <td style="border: 1px solid #000; padding: 4px;">${escapeHtml(shipment.consigneeName ?? '')}</td>
+            <td style="font-weight: bold; border: 1px solid #000; padding: 4px;">Shift Leader Name</td>
+            <td style="border: 1px solid #000; padding: 4px;">${escapeHtml(costSheet.shiftLeaderSignature ?? '')}</td>
+          </tr>
+        </table>
+
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+          <thead>
+            <tr>
+              <th style="font-weight: bold; border: 1px solid #000; padding: 4px; text-align: left; background-color: #e5e7eb;">Expenses</th>
+              <th style="font-weight: bold; border: 1px solid #000; padding: 4px; text-align: right; background-color: #e5e7eb;">Amount in LKR</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+          <tfoot>
+            <tr>
+              <td style="font-weight: bold; border: 1px solid #000; padding: 4px; text-align: right;">Total</td>
+              <td style="font-weight: bold; border: 1px solid #000; padding: 4px; text-align: right;">${escapeHtml(formatAmount(costSheet.total))}</td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="font-weight: bold; border: 1px solid #000; padding: 4px; width: 25%; vertical-align: top;">Remarks</td>
+            <td style="border: 1px solid #000; padding: 4px; vertical-align: top; min-height: 40px;">${escapeHtml(costSheet.remarks ?? '')}</td>
+          </tr>
+        </table>
       </body>
     </html>
-  `);
+  `;
+  const fullHtml = html + `<script>window.onload = () => setTimeout(() => { window.print(); }, 200);</script>`;
+  printWindow.document.open();
+  printWindow.document.write(fullHtml);
   printWindow.document.close();
-  printWindow.focus();
-  printWindow.print();
 }
 
 /** PRD §5.3/CONTEXT.md §12: release -> review -> approve. Rendered as one tab pane inside DocumentsSection.tsx's unified tab bar — no card/heading of its own, that's the shared tab container's job. */
@@ -126,6 +217,7 @@ export function CostSheetSection({ shipmentId }: { shipmentId: string }) {
 }
 
 function CostSheetDetail({ shipmentId, costSheet }: { shipmentId: string; costSheet: CostSheet }) {
+  const shipmentQuery = useShipment(shipmentId);
   const updateMutation = useUpdateCostSheet(shipmentId);
   const releaseMutation = useReleaseCostSheet(shipmentId);
   const approveMutation = useApproveCostSheet(shipmentId);
@@ -139,7 +231,7 @@ function CostSheetDetail({ shipmentId, costSheet }: { shipmentId: string; costSh
   const [lineAmounts, setLineAmounts] = useState<Record<CostSheetLineType, string>>(
     () =>
       Object.fromEntries(
-        costSheet.lines.map((line) => [line.lineType, line.amount ?? '']),
+        costSheet.lines.map((line) => [line.lineType, line.amount ? formatAmount(line.amount) : '']),
       ) as Record<CostSheetLineType, string>,
   );
 
@@ -155,7 +247,7 @@ function CostSheetDetail({ shipmentId, costSheet }: { shipmentId: string; costSh
     setShiftLeaderSignature(costSheet.shiftLeaderSignature ?? '');
     setLineAmounts(
       Object.fromEntries(
-        costSheet.lines.map((line) => [line.lineType, line.amount ?? '']),
+        costSheet.lines.map((line) => [line.lineType, line.amount ? formatAmount(line.amount) : '']),
       ) as Record<CostSheetLineType, string>,
     );
   };
@@ -180,7 +272,7 @@ function CostSheetDetail({ shipmentId, costSheet }: { shipmentId: string; costSh
           remarks: remarks || undefined,
           shiftLeaderSignature: shiftLeaderSignature || undefined,
           lines: Object.fromEntries(
-            COST_SHEET_LINE_TYPES.map((type) => [type, lineAmounts[type] || undefined]),
+            COST_SHEET_LINE_TYPES.map((type) => [type, lineAmounts[type] ? lineAmounts[type].replace(/,/g, '') : undefined]),
           ) as Record<CostSheetLineType, string | undefined>,
         },
       },
@@ -188,73 +280,25 @@ function CostSheetDetail({ shipmentId, costSheet }: { shipmentId: string; costSh
     );
   };
 
-  const fieldsDisabled = !isEditing;
+  
 
   return (
-    <div className="mt-4 flex flex-col gap-4">
-      <div className="flex items-center gap-3">
-        <span className="bg-muted rounded px-2 py-0.5 text-xs font-medium">{costSheet.status}</span>
-        {costSheet.approvedAt && (
-          <span className="text-muted-foreground text-xs">
-            Approved {new Date(costSheet.approvedAt).toLocaleString()}
+    <div className="mt-4 flex flex-col gap-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <span className="bg-brand-navy/10 text-brand-navy rounded-md px-2.5 py-1 text-xs font-semibold tracking-wide uppercase">
+            {costSheet.status}
           </span>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="cs-snNo">S/N No</Label>
-          <Input
-            id="cs-snNo"
-            value={snNo}
-            disabled={fieldsDisabled}
-            onChange={(e) => setSnNo(e.target.value)}
-          />
+          {costSheet.approvedAt && (
+            <span className="text-muted-foreground text-xs font-medium">
+              Approved {new Date(costSheet.approvedAt).toLocaleString()}
+            </span>
+          )}
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {COST_SHEET_LINE_TYPES.map((type) => (
-          <div key={type} className="flex flex-col gap-1.5">
-            <Label htmlFor={`cs-line-${type}`}>{COST_SHEET_LINE_LABELS[type]}</Label>
-            <Input
-              id={`cs-line-${type}`}
-              inputMode="decimal"
-              placeholder="0.00"
-              disabled={fieldsDisabled}
-              value={lineAmounts[type] ?? ''}
-              onChange={(e) => setLineAmounts((prev) => ({ ...prev, [type]: e.target.value }))}
-            />
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="cs-remarks">Remarks</Label>
-          <Input
-            id="cs-remarks"
-            value={remarks}
-            disabled={fieldsDisabled}
-            onChange={(e) => setRemarks(e.target.value)}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="cs-shiftLeader">Shift Leader signature</Label>
-          <Input
-            id="cs-shiftLeader"
-            value={shiftLeaderSignature}
-            disabled={fieldsDisabled}
-            onChange={(e) => setShiftLeaderSignature(e.target.value)}
-          />
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between border-t pt-4">
-        <span className="text-lg font-semibold">Total: LKR {costSheet.total}</span>
-
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => printCostSheet(costSheet)}>
+        
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => printCostSheet(costSheet, shipmentQuery.data!)}
+            disabled={!shipmentQuery.data}>
             Print
           </Button>
 
@@ -263,17 +307,18 @@ function CostSheetDetail({ shipmentId, costSheet }: { shipmentId: string; costSh
               <>
                 <Button
                   variant="outline"
+                  size="sm"
                   disabled={updateMutation.isPending}
                   onClick={handleCancelEdit}
                 >
                   Cancel
                 </Button>
-                <Button disabled={updateMutation.isPending} onClick={handleSave}>
+                <Button size="sm" disabled={updateMutation.isPending} onClick={handleSave}>
                   {updateMutation.isPending ? 'Saving…' : 'Save'}
                 </Button>
               </>
             ) : (
-              <Button variant="outline" onClick={handleEdit}>
+              <Button variant="outline" size="sm" onClick={handleEdit}>
                 Edit
               </Button>
             )}
@@ -282,6 +327,7 @@ function CostSheetDetail({ shipmentId, costSheet }: { shipmentId: string; costSh
           {costSheet.status === 'DRAFT' && (
             <RequirePermission permission="costsheet.prepare">
               <Button
+                size="sm"
                 disabled={releaseMutation.isPending}
                 onClick={() => releaseMutation.mutate(costSheet.id)}
               >
@@ -293,6 +339,7 @@ function CostSheetDetail({ shipmentId, costSheet }: { shipmentId: string; costSh
           {costSheet.status === 'RELEASED' && (
             <RequirePermission permission="costsheet.approve">
               <Button
+                size="sm"
                 disabled={approveMutation.isPending}
                 onClick={() => approveMutation.mutate(costSheet.id)}
               >
@@ -301,6 +348,83 @@ function CostSheetDetail({ shipmentId, costSheet }: { shipmentId: string; costSh
             </RequirePermission>
           )}
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+        {/* Header fields */}
+        <div className="col-span-1 sm:col-span-2 flex flex-col gap-1.5">
+          <Label htmlFor="cs-snNo" className={!isEditing ? 'text-muted-foreground text-[11px] font-medium tracking-wide uppercase' : ''}>S/N No</Label>
+          {isEditing ? (
+            <Input
+              id="cs-snNo"
+              value={snNo}
+              onChange={(e) => setSnNo(e.target.value)}
+            />
+          ) : (
+            <div className="text-foreground text-sm font-medium">{snNo || '—'}</div>
+          )}
+        </div>
+
+        {/* Lines */}
+        {COST_SHEET_LINE_TYPES.map((type) => (
+          <div key={type} className="flex flex-col gap-1.5">
+            <Label htmlFor={`cs-line-${type}`} className={!isEditing ? 'text-muted-foreground text-[11px] font-medium tracking-wide uppercase' : ''}>
+              {COST_SHEET_LINE_LABELS[type]}
+            </Label>
+            {isEditing ? (
+              <Input
+                id={`cs-line-${type}`}
+                inputMode="decimal"
+                placeholder="0.00"
+                value={lineAmounts[type] ?? ''}
+                onChange={(e) => setLineAmounts((prev) => ({ ...prev, [type]: e.target.value }))}
+                onBlur={() => {
+                  setLineAmounts((prev) => {
+                    const val = prev[type];
+                    if (!val) return prev;
+                    const num = parseFloat(val.replace(/,/g, ''));
+                    if (isNaN(num)) return prev;
+                    return { ...prev, [type]: formatAmount(num.toString()) };
+                  });
+                }}
+              />
+            ) : (
+              <div className="text-foreground text-sm font-medium">
+                {lineAmounts[type] ? `LKR ${formatAmount(lineAmounts[type])}` : '—'}
+              </div>
+            )}
+          </div>
+        ))}
+
+        {/* Footer fields */}
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="cs-remarks" className={!isEditing ? 'text-muted-foreground text-[11px] font-medium tracking-wide uppercase' : ''}>Remarks</Label>
+          {isEditing ? (
+            <Input
+              id="cs-remarks"
+              value={remarks}
+              onChange={(e) => setRemarks(e.target.value)}
+            />
+          ) : (
+            <div className="text-foreground text-sm font-medium">{remarks || '—'}</div>
+          )}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="cs-shiftLeader" className={!isEditing ? 'text-muted-foreground text-[11px] font-medium tracking-wide uppercase' : ''}>Shift Leader Name</Label>
+          {isEditing ? (
+            <Input
+              id="cs-shiftLeader"
+              value={shiftLeaderSignature}
+              onChange={(e) => setShiftLeaderSignature(e.target.value)}
+            />
+          ) : (
+            <div className="text-foreground text-sm font-medium">{shiftLeaderSignature || '—'}</div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex justify-end border-t border-border/50 pt-4">
+        <span className="text-xl font-bold tracking-tight text-foreground">Total: LKR {formatAmount(costSheet.total)}</span>
       </div>
 
       {(updateMutation.isError || releaseMutation.isError || approveMutation.isError) && (

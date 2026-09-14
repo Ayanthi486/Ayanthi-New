@@ -27,6 +27,7 @@ export function computeDocumentReadiness(shipment: ReadinessShipment): DocumentR
 export interface DocumentShipmentRow {
   mawbNo: string | null;
   flightNo: string | null;
+  airline: { code: string };
   flightDate: Date;
   cusdecNo: string | null;
   boxCount: number | null;
@@ -39,6 +40,19 @@ export interface DocumentShipmentRow {
 
 function formatDateOnly(date: Date): string {
   return date.toISOString().slice(0, 10);
+}
+
+function formatFlightForDoc(airlineCode: string | null | undefined, flightNo: string | null | undefined): string | null {
+  if (!flightNo) return null;
+  const code = (airlineCode || '').trim();
+  let fNo = flightNo.trim();
+  if (code && fNo.toUpperCase().startsWith(code.toUpperCase())) {
+    fNo = fNo.slice(code.length).trim();
+  }
+  if (/^\d+$/.test(fNo) && fNo.length < 4) {
+    fNo = fNo.padStart(4, '0');
+  }
+  return code ? `${code} ${fNo}` : fNo;
 }
 
 /** The preparer identity a Security Clearance certificate is signed under — never typed by hand, see buildShipmentViewModel's SECURITY_CLEARANCE case. */
@@ -80,7 +94,7 @@ export function buildShipmentViewModel(
         // from the shipment, unlike every other field here.
         boxCount: null,
         weightKg: null,
-        flightNo: shipment.flightNo,
+        flightNo: formatFlightForDoc(shipment.airline?.code, shipment.flightNo),
         flightDate: formatDateOnly(shipment.flightDate),
         destination,
         shipperName: shipment.shipper.name,
@@ -105,7 +119,7 @@ export function buildShipmentViewModel(
       };
     case 'ADF':
       return {
-        flightNo: shipment.flightNo,
+        flightNo: formatFlightForDoc(shipment.airline?.code, shipment.flightNo),
         flightDate: formatDateOnly(shipment.flightDate),
         awbNo: shipment.mawbNo,
         // No separate multi-leg routing field exists on Shipment (mirrors
@@ -124,7 +138,7 @@ export function buildShipmentViewModel(
         consigneeName: shipment.consignee.name,
         consigneeAddress: shipment.consignee.address,
         routing: destination,
-        flightNo: shipment.flightNo,
+        flightNo: formatFlightForDoc(shipment.airline?.code, shipment.flightNo),
         flightDate: formatDateOnly(shipment.flightDate),
         grossWeightKg: gross,
         commodityName: shipment.commodity.name,
@@ -136,7 +150,7 @@ export function buildShipmentViewModel(
         shipperAddress: shipment.shipper.address,
         consigneeName: shipment.consignee.name,
         consigneeAddress: shipment.consignee.address,
-        flightNo: shipment.flightNo,
+        flightNo: formatFlightForDoc(shipment.airline?.code, shipment.flightNo),
         flightDate: formatDateOnly(shipment.flightDate),
         destination,
         mawbNo: shipment.mawbNo,

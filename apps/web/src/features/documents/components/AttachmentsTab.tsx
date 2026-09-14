@@ -11,6 +11,7 @@ import {
 } from '@/features/documents/hooks/useAttachments';
 import { ApiClientError } from '@/lib/apiClient';
 import { useToastStore } from '@/lib/toastStore';
+import { printFileBlob } from '@/lib/utils';
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -23,7 +24,7 @@ function formatSize(bytes: number): string {
  * Distinct from the five PRD-defined document tabs: no fieldData/issue
  * workflow, no box/weight readiness gate (see DocumentsSection.tsx).
  */
-export function AttachmentsTab({ shipmentId }: { shipmentId: string }) {
+export function AttachmentsTab({ shipmentId, category, accept, description }: { shipmentId: string; category: string; accept: string; description: string }) {
   const attachmentsQuery = useAttachments(shipmentId);
   const uploadMutation = useUploadAttachment(shipmentId);
   const deleteMutation = useDeleteAttachment(shipmentId);
@@ -35,7 +36,7 @@ export function AttachmentsTab({ shipmentId }: { shipmentId: string }) {
   const handleFileSelected = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    uploadMutation.mutate(file, {
+    uploadMutation.mutate({ file, category }, {
       onError: (error) => {
         showToast(
           error instanceof ApiClientError ? error.message : 'Unable to upload this file.',
@@ -59,6 +60,19 @@ export function AttachmentsTab({ shipmentId }: { shipmentId: string }) {
     });
   };
 
+  const handlePrint = (attachment: ShipmentAttachment) => {
+    const printWindow = window.open('about:blank', '_blank');
+    downloadMutation.mutate(attachment.id, {
+      onSuccess: (blob) => {
+        printFileBlob(blob, printWindow);
+      },
+      onError: (error) => {
+        printWindow?.close();
+        showToast(error instanceof ApiClientError ? error.message : 'Unable to print this file.');
+      },
+    });
+  };
+
   const handleRemove = (id: string) => {
     deleteMutation.mutate(id, {
       onSuccess: () => setConfirmingRemoveId(null),
@@ -68,13 +82,12 @@ export function AttachmentsTab({ shipmentId }: { shipmentId: string }) {
     });
   };
 
-  const attachments = attachmentsQuery.data ?? [];
+  const attachments = (attachmentsQuery.data ?? []).filter(a => a.category === category);
 
   return (
     <div className="flex flex-col gap-4">
       <p className="text-muted-foreground text-sm">
-        Supporting files for this shipment — customs forms, correspondence, scans (PDF, JPEG or
-        PNG).
+        {description}
       </p>
 
       <RequirePermission permission="documents.manage">
@@ -84,7 +97,7 @@ export function AttachmentsTab({ shipmentId }: { shipmentId: string }) {
             key={fileInputKey}
             id="attachment-upload"
             type="file"
-            accept="application/pdf,image/jpeg,image/png"
+            accept={accept}
             disabled={uploadMutation.isPending}
             onChange={handleFileSelected}
             className="text-sm"
@@ -114,6 +127,15 @@ export function AttachmentsTab({ shipmentId }: { shipmentId: string }) {
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={downloadMutation.isPending}
+                  onClick={() => handlePrint(attachment)}
+                >
+                  Print
+                </Button>
+
                 <Button
                   variant="outline"
                   size="sm"

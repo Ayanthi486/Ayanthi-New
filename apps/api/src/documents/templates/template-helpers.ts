@@ -30,7 +30,6 @@ export function htmlDocument(title: string, pageCss: string, body: string): stri
 <meta charset="utf-8" />
 <title>${escapeHtml(title)}</title>
 <style>
-  ${pageCss}
   * { box-sizing: border-box; }
   body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; margin: 0; padding: 8mm; color: #000; }
   table { width: 100%; border-collapse: collapse; }
@@ -39,6 +38,7 @@ export function htmlDocument(title: string, pageCss: string, body: string): stri
   .title { text-align: center; font-weight: bold; font-size: 13pt; margin-bottom: 6px; }
   .section-title { background: #ddd; font-weight: bold; padding: 3px 5px; font-size: 9pt; }
   .blank { color: #999; }
+  ${pageCss}
 </style>
 </head>
 <body>

@@ -12,9 +12,11 @@ export async function listAttachments(shipmentId: string): Promise<ShipmentAttac
 export async function uploadAttachment(
   shipmentId: string,
   file: File,
+  category: string,
 ): Promise<ShipmentAttachment> {
   const form = new FormData();
   form.set('file', file);
+  form.set('category', category);
   return apiFetch<ShipmentAttachment>(`/shipments/${shipmentId}/attachments`, {
     method: 'POST',
     body: form,

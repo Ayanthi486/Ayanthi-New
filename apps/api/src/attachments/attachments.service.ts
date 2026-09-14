@@ -47,6 +47,7 @@ export class AttachmentsService {
   async upload(
     shipmentId: string,
     file: UploadedAttachmentFile,
+    category: string,
     actor: RequestUser,
   ): Promise<ShipmentAttachment> {
     await this.checkManagePermission(actor);
@@ -76,6 +77,7 @@ export class AttachmentsService {
             storageKey: saved.key,
             contentType: file.mimetype,
             size: saved.size,
+            category,
             uploadedByUserId: actor.id,
           },
         }),

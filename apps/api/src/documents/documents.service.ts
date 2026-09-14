@@ -40,6 +40,7 @@ import {
 const DOCUMENT_SHIPMENT_SELECT = {
   mawbNo: true,
   flightNo: true,
+  airline: { select: { code: true } },
   flightDate: true,
   cusdecNo: true,
   boxCount: true,
@@ -52,7 +53,7 @@ const DOCUMENT_SHIPMENT_SELECT = {
 
 const PAGE_SIZE_BY_TYPE: Record<DocumentType, string> = {
   SECURITY_CLEARANCE: 'A4',
-  AWB_STICKER: '12cm x 8cm',
+  AWB_STICKER: 'A4',
   ADF: 'N/A',
   AWB: 'A4',
   CDN: 'A4',
@@ -101,7 +102,7 @@ export class DocumentsService {
     }
     const shipment = await this.findShipmentOrThrow(shipmentId);
     const readiness = computeDocumentReadiness(shipment);
-    if (!readiness.ready) throw new BusinessRuleError(DOCUMENT_BLOCKED_MESSAGE);
+    if (!readiness.ready && type !== 'SECURITY_CLEARANCE' && type !== 'CDN') throw new BusinessRuleError(DOCUMENT_BLOCKED_MESSAGE);
 
     const latest = await this.findLatest(shipmentId, type);
     if (latest && latest.status === 'DRAFT') {
@@ -189,7 +190,7 @@ export class DocumentsService {
 
     const shipment = await this.findShipmentOrThrow(shipmentId);
     const readiness = computeDocumentReadiness(shipment);
-    if (!readiness.ready) throw new BusinessRuleError(DOCUMENT_BLOCKED_MESSAGE);
+    if (!readiness.ready && type !== 'SECURITY_CLEARANCE' && type !== 'CDN') throw new BusinessRuleError(DOCUMENT_BLOCKED_MESSAGE);
 
     const latest = await this.findLatest(shipmentId, type);
     if (!latest) throw new NotFoundError('No document has been created yet for this type');
@@ -266,7 +267,7 @@ export class DocumentsService {
     // so only a DRAFT's live view model needs re-checking here.
     if (latest.status !== 'ISSUED') {
       const readiness = computeDocumentReadiness(shipment);
-      if (!readiness.ready) throw new BusinessRuleError(DOCUMENT_BLOCKED_MESSAGE);
+      if (!readiness.ready && type !== 'SECURITY_CLEARANCE' && type !== 'CDN') throw new BusinessRuleError(DOCUMENT_BLOCKED_MESSAGE);
     }
 
     const viewModel =
@@ -314,7 +315,7 @@ export class DocumentsService {
 
     const shipment = await this.findShipmentOrThrow(shipmentId);
     const readiness = computeDocumentReadiness(shipment);
-    if (!readiness.ready) throw new BusinessRuleError(DOCUMENT_BLOCKED_MESSAGE);
+    if (!readiness.ready && type !== 'SECURITY_CLEARANCE' && type !== 'CDN') throw new BusinessRuleError(DOCUMENT_BLOCKED_MESSAGE);
 
     const kind = validateFileKind(file.mimetype, file.buffer);
     if (kind !== 'pdf') {

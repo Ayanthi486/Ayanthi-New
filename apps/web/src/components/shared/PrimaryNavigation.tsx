@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import type { PermissionKey } from '@hub-lanka/shared';
 import { RequirePermission } from '@/app/RequirePermission';
 import { cn } from '@/lib/utils';
@@ -96,12 +97,12 @@ export function NavLinkItem({
       onClick={onNavigate}
       className={({ isActive }) =>
         cn(
-          'flex items-center gap-2 rounded-md text-sm font-medium transition-colors',
+          'relative flex items-center gap-2 rounded-md text-sm font-medium transition-colors',
           'focus-visible:ring-brand-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
           mobile ? 'border-l-4 px-3 py-2.5' : 'px-2.5 py-1.5 whitespace-nowrap lg:px-2 xl:px-3',
           isActive
             ? cn(
-                'bg-nav-active text-nav-active-foreground font-semibold',
+                'text-nav-active-foreground font-semibold',
                 mobile && 'border-l-brand-gold',
               )
             : cn(
@@ -111,11 +112,33 @@ export function NavLinkItem({
         )
       }
     >
-      <Icon
-        className={cn('size-4 shrink-0', !mobile && 'hidden xl:inline-block')}
-        aria-hidden="true"
-      />
-      {item.label}
+      {({ isActive }) => (
+        <>
+          {isActive && !mobile && (
+            <motion.div
+              layoutId="nav-indicator-desktop"
+              className="bg-nav-active absolute inset-0 rounded-md"
+              initial={false}
+              transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+            />
+          )}
+          {isActive && mobile && (
+            <motion.div
+              layoutId="nav-indicator-mobile"
+              className="bg-nav-active/10 absolute inset-0 -z-10 rounded-r-md"
+              initial={false}
+              transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+            />
+          )}
+          <span className="relative z-10 flex items-center gap-2">
+            <Icon
+              className={cn('size-4 shrink-0', !mobile && 'hidden xl:inline-block')}
+              aria-hidden="true"
+            />
+            {item.label}
+          </span>
+        </>
+      )}
     </NavLink>
   );
 

@@ -6,6 +6,7 @@ export interface ShipmentAttachmentRow {
   filename: string;
   contentType: string;
   size: number;
+  category: string;
   uploadedByUserId: string;
   createdAt: Date;
 }
@@ -17,6 +18,7 @@ export function toSharedAttachment(row: ShipmentAttachmentRow): SharedShipmentAt
     filename: row.filename,
     contentType: row.contentType,
     size: row.size,
+    category: row.category,
     uploadedByUserId: row.uploadedByUserId,
     createdAt: row.createdAt.toISOString(),
   };

@@ -1,9 +1,11 @@
 import { Menu, X } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BrandMark } from '@/components/shared/BrandMark';
-import { NAV_ITEMS, NavLinkItem, PrimaryNavigation } from '@/components/shared/PrimaryNavigation';
+import { NavLinkItem, NAV_ITEMS, PrimaryNavigation } from '@/components/shared/PrimaryNavigation';
 import { ProfileMenu } from '@/components/shared/ProfileMenu';
+import { ThemeToggle } from '@/components/shared/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { logout } from '@/features/auth/api/authApi';
 import { useAuthStore } from '@/lib/authStore';
@@ -55,7 +57,7 @@ export function AppHeader() {
   };
 
   return (
-    <header className="bg-background border-b-nav-border sticky top-0 z-40 border-b shadow-sm print:hidden">
+    <header className="bg-background/80 backdrop-blur-md border-b-nav-border sticky top-0 z-40 border-b shadow-sm print:hidden transition-all duration-300">
       <div className="flex h-[72px] w-full items-center gap-4 px-6">
         <Link
           to="/"
@@ -85,6 +87,8 @@ export function AppHeader() {
               {mobileOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
             </Button>
 
+            <ThemeToggle />
+
             <ProfileMenu
               fullName={user.fullName}
               email={user.email}
@@ -97,20 +101,29 @@ export function AppHeader() {
         )}
       </div>
 
-      {user && mobileOpen && (
-        <div id="mobile-nav" className="border-border border-t lg:hidden">
-          <nav aria-label="Primary" className="flex flex-col gap-1 px-4 py-3">
-            {NAV_ITEMS.map((item) => (
-              <NavLinkItem
-                key={item.to}
-                item={item}
-                mobile
-                onNavigate={() => setMobileOpen(false)}
-              />
-            ))}
-          </nav>
-        </div>
-      )}
+      <AnimatePresence>
+        {user && mobileOpen && (
+          <motion.div
+            id="mobile-nav"
+            className="border-border border-t lg:hidden overflow-hidden"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
+          >
+            <nav aria-label="Primary" className="flex flex-col gap-1 px-4 py-3">
+              {NAV_ITEMS.map((item) => (
+                <NavLinkItem
+                  key={item.to}
+                  item={item}
+                  mobile
+                  onNavigate={() => setMobileOpen(false)}
+                />
+              ))}
+            </nav>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </header>
   );
 }

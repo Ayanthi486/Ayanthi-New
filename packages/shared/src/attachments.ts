@@ -12,6 +12,7 @@ export const shipmentAttachmentSchema = z.object({
   filename: z.string(),
   contentType: z.string(),
   size: z.number().int(),
+  category: z.string(),
   uploadedByUserId: z.string(),
   createdAt: z.string(),
 });

@@ -714,6 +714,7 @@ model ShipmentAttachment {
   storageKey  String
   contentType String
   size        Int
+  category    String @default("OTHER")
 
   uploadedByUserId String
   createdAt        DateTime @default(now())

@@ -76,7 +76,7 @@ const editShipment: Shipment = {
   airlineId: 'airline-1',
   airlineCode: 'EK',
   airlineName: 'Emirates',
-  flightNo: 'EK654',
+  flightNo: 'EK 0654',
   destinationAirportId: 'airport-1',
   destinationAirportCode: 'DXB',
   shipperId: 'shipper-1',

@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { fetchMe } from '@/features/auth/api/authApi';
 import { queryClient } from '@/lib/queryClient';
 import { useAuthStore } from '@/lib/authStore';
+import { ThemeProvider } from '@/components/shared/ThemeProvider';
 
 /**
  * Runs once on mount: tries GET /me. With no in-memory access token yet
@@ -45,10 +46,12 @@ function AuthBootstrap({ children }: { children: ReactNode }) {
 
 export function AppProviders({ children }: { children: ReactNode }) {
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AuthBootstrap>{children}</AuthBootstrap>
-      </BrowserRouter>
-    </QueryClientProvider>
+    <ThemeProvider defaultTheme="system" storageKey="hlffms-theme">
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <AuthBootstrap>{children}</AuthBootstrap>
+        </BrowserRouter>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }

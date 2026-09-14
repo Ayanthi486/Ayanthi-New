@@ -1,0 +1,109 @@
+--- apps/web/src/features/costsheet/components/CostSheetSection.tsx
++++ apps/web/src/features/costsheet/components/CostSheetSection.tsx
+@@ -20,6 +20,13 @@
+ import { ApiClientError } from '@/lib/apiClient';
+ import { escapeHtml } from '@/lib/utils';
+ 
++const formatAmount = (val: string | null | undefined): string => {
++  if (val === null || val === undefined || val === '') return '';
++  const num = parseFloat(val.replace(/,/g, ''));
++  if (isNaN(num)) return val;
++  return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
++};
++
+ function printCostSheet(costSheet: CostSheet): void {
+   const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+   if (!printWindow) return;
+ 
+   const rows = COST_SHEET_LINE_TYPES.map((type) => {
+-    const amount = costSheet.lines.find((line) => line.lineType === type)?.amount ?? '0.00';
+-    return `<tr><td>${escapeHtml(COST_SHEET_LINE_LABELS[type])}</td><td style="text-align:right">${escapeHtml(amount)}</td></tr>`;
++    const amount = costSheet.lines.find((line) => line.lineType === type)?.amount;
++    const displayAmount = amount ? formatAmount(amount) : '0.00';
++    return `<tr><td>${escapeHtml(COST_SHEET_LINE_LABELS[type])}</td><td style="text-align:right">${escapeHtml(displayAmount)}</td></tr>`;
+   }).join('');
+ 
+   printWindow.document.write(`
+@@ -48,9 +55,9 @@
+           <thead><tr><th>Line</th><th>Amount (LKR)</th></tr></thead>
+           <tbody>${rows}</tbody>
+         </table>
+-        <p><strong>Total: LKR ${escapeHtml(costSheet.total)}</strong></p>
++        <p><strong>Total: LKR ${escapeHtml(formatAmount(costSheet.total))}</strong></p>
+         <p>Remarks: ${escapeHtml(costSheet.remarks ?? '—')}</p>
+-        <p>Shift Leader signature: ${escapeHtml(costSheet.shiftLeaderSignature ?? '—')}</p>
++        <p>Shift Leader Name: ${escapeHtml(costSheet.shiftLeaderSignature ?? '—')}</p>
+       </body>
+     </html>
+   `);
+@@ -102,7 +109,7 @@
+       Object.fromEntries(
+-        costSheet.lines.map((line) => [line.lineType, line.amount ?? '']),
++        costSheet.lines.map((line) => [line.lineType, line.amount ? formatAmount(line.amount) : '']),
+       ) as Record<CostSheetLineType, string>,
+     );
+   };
+@@ -124,7 +131,7 @@
+           shiftLeaderSignature: shiftLeaderSignature || undefined,
+           lines: Object.fromEntries(
+-            COST_SHEET_LINE_TYPES.map((type) => [type, lineAmounts[type] || undefined]),
++            COST_SHEET_LINE_TYPES.map((type) => [type, lineAmounts[type] ? lineAmounts[type].replace(/,/g, '') : undefined]),
+           ) as Record<CostSheetLineType, string | undefined>,
+         },
+       },
+@@ -155,7 +162,7 @@
+       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+         {/* Header fields */}
+         <div className="col-span-1 sm:col-span-2 flex flex-col gap-1.5">
+-          <Label htmlFor="cs-snNo" className={!isEditing ? 'text-muted-foreground text-[11px] font-medium tracking-wide uppercase' : ''}>S/N No</Label>
++          <Label htmlFor="cs-snNo" className={!isEditing ? 'text-muted-foreground text-[11px] font-medium tracking-wide uppercase' : ''}>S/N No.</Label>
+           {isEditing ? (
+             <Input
+               id="cs-snNo"
++              type="text"
+               value={snNo}
+@@ -176,7 +183,16 @@
+                 placeholder="0.00"
+                 value={lineAmounts[type] ?? ''}
+                 onChange={(e) => setLineAmounts((prev) => ({ ...prev, [type]: e.target.value }))}
++                onBlur={() => {
++                  setLineAmounts((prev) => {
++                    const val = prev[type];
++                    if (!val) return prev;
++                    const num = parseFloat(val.replace(/,/g, ''));
++                    if (isNaN(num)) return prev;
++                    return { ...prev, [type]: formatAmount(num.toString()) };
++                  });
++                }}
+               />
+             ) : (
+               <div className="text-foreground text-sm font-medium">
+-                {lineAmounts[type] ? `LKR ${lineAmounts[type]}` : '—'}
++                {lineAmounts[type] ? `LKR ${formatAmount(lineAmounts[type])}` : '—'}
+               </div>
+             )}
+@@ -191,7 +207,7 @@
+           {isEditing ? (
+             <Input
+               id="cs-remarks"
++              type="text"
+               value={remarks}
+@@ -201,11 +217,12 @@
+           )}
+         </div>
+         <div className="flex flex-col gap-1.5">
+-          <Label htmlFor="cs-shiftLeader" className={!isEditing ? 'text-muted-foreground text-[11px] font-medium tracking-wide uppercase' : ''}>Shift Leader signature</Label>
++          <Label htmlFor="cs-shiftLeader" className={!isEditing ? 'text-muted-foreground text-[11px] font-medium tracking-wide uppercase' : ''}>Shift Leader Name</Label>
+           {isEditing ? (
+             <Input
+               id="cs-shiftLeader"
++              type="text"
+               value={shiftLeaderSignature}
+               onChange={(e) => setShiftLeaderSignature(e.target.value)}
+@@ -218,7 +235,7 @@
+ 
+       <div className="flex justify-end border-t border-border/50 pt-4">
+-        <span className="text-xl font-bold tracking-tight text-foreground">Total: LKR {costSheet.total}</span>
++        <span className="text-xl font-bold tracking-tight text-foreground">Total: LKR {formatAmount(costSheet.total)}</span>
+       </div>
+ 
