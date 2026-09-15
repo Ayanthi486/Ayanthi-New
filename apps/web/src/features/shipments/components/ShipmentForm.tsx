@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import {
   useAirlines,
   useAirports,
+  useCreateAirline,
   useCommodities,
   useConsignees,
   useCreateAirport,
@@ -103,6 +104,7 @@ export function ShipmentForm({
   const shippersQuery = useShippers();
   const consigneesQuery = useConsignees();
   const airlinesQuery = useAirlines();
+  const createAirlineMutation = useCreateAirline();
   const airportsQuery = useAirports();
   const commoditiesQuery = useCommodities();
   const flightsQuery = useFlights();
@@ -437,12 +439,14 @@ export function ShipmentForm({
               onCreate={async (input) => {
                 setFlightCreateError(undefined);
                 const { code, flightNo } = splitFlightNumber(input.name ?? '');
-                const airline = airlinesQuery.data?.find((a) => a.code === code);
+                let airline = airlinesQuery.data?.find((a) => a.code === code);
                 if (!airline) {
-                  setFlightCreateError(
-                    `No airline found with code "${code}". Add it in Master Data first.`,
-                  );
-                  throw new Error('Unknown airline code');
+                  try {
+                    airline = await createAirlineMutation.mutateAsync({ code, name: `${code} (Auto-created)` });
+                  } catch (err) {
+                    setFlightCreateError(`Failed to auto-create airline "${code}".`);
+                    throw err;
+                  }
                 }
                 const created = await createFlightMutation.mutateAsync({
                   airlineId: airline.id,

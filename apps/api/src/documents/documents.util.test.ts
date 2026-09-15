@@ -100,7 +100,6 @@ describe('documents.util', () => {
         flightDate: '2026-08-04',
         destination: 'MXP',
         mawbNo: '157 0659 8944',
-  airline: { code: 'QR' },
         boxCount: 26,
         weightKg: '444.50',
         commodityName: 'FRESH FISH',

@@ -480,10 +480,10 @@ describe('ShipmentForm', () => {
       });
       fireEvent.click(within(dialog).getByRole('button', { name: 'Create' }));
 
-      expect(
-        await within(dialog).findByText('No airline found with code "ZZ". Add it in Master Data first.'),
-      ).toBeInTheDocument();
-      expect(createdPosts.some((p) => p.url.includes('/masterdata/flights'))).toBe(false);
+      await waitFor(() => {
+        expect(createdPosts.some((p) => p.url.includes('/masterdata/airlines') && p.body?.code === 'ZZ')).toBe(true);
+        expect(createdPosts.some((p) => p.url.includes('/masterdata/flights') && p.body?.flightNo === '1234')).toBe(true);
+      });
     });
 
     it('warns about a likely duplicate before creating, and "Use existing" selects the existing record without posting', async () => {

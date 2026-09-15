@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   useAirlines,
+  useCreateAirline,
   useCreateFlight,
   useDeactivateFlight,
   useFlights,
@@ -43,6 +44,7 @@ const columns: ColumnDef<Flight, unknown>[] = [
 export function FlightsPage() {
   const flightsQuery = useFlights();
   const airlinesQuery = useAirlines();
+  const createAirlineMutation = useCreateAirline();
   const createFlightMutation = useCreateFlight();
   const deactivateMutation = useDeactivateFlight();
 
@@ -58,12 +60,16 @@ export function FlightsPage() {
 
   const onSubmit = handleSubmit(async (values) => {
     const { code, flightNo } = splitFlightNumber(values.flightNumber);
-    const airline = airlinesQuery.data?.find((a) => a.code === code);
+    let airline = airlinesQuery.data?.find((a) => a.code === code);
     if (!airline) {
-      setError('flightNumber', {
-        message: `No airline found with code "${code}". Add it in Master Data → Airlines first.`,
-      });
-      return;
+      try {
+        airline = await createAirlineMutation.mutateAsync({ code, name: `${code} (Auto-created)` });
+      } catch (err) {
+        setError('flightNumber', {
+          message: `Failed to auto-create airline "${code}".`,
+        });
+        return;
+      }
     }
     try {
       await createFlightMutation.mutateAsync({ airlineId: airline.id, flightNo, depTime: values.depTime });

@@ -35,9 +35,9 @@ export class CargoService {
         if (!existing) throw new NotFoundError('Shipment not found');
         // Stricter than the general shipment.update lock (which blocks
         // COMPLETED and CANCELLED): cargo is "editable only while Pending".
-        if (existing.status !== 'PENDING') {
+        if (!['PENDING', 'CONFIRMED', 'CANCELLED'].includes(existing.status)) {
           throw new BusinessRuleError(
-            'Box and weight can only be entered while a shipment is Pending',
+            'Box and weight can only be entered while a shipment is Pending, Confirmed, or Cancelled',
           );
         }
 

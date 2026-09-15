@@ -18,7 +18,7 @@ export function CargoValueCell({
   value: string | number;
 }) {
   const hasPermission = useAuthStore((state) => state.hasPermission);
-  const canEdit = shipment.status === 'PENDING' && hasPermission('cargo.boxweight.enter');
+  const canEdit = ['PENDING', 'CONFIRMED', 'CANCELLED'].includes(shipment.status) && hasPermission('cargo.boxweight.enter');
 
   if (!canEdit) {
     return <span>{value}</span>;
