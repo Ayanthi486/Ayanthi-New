@@ -7,7 +7,11 @@ import {
   useRemoveAvatar,
   useUpdateProfile,
   useUploadAvatar,
+  useRemoveSignature,
+  useUploadSignature,
 } from '@/features/profile/hooks/useProfile';
+import { downloadSignature } from '@/features/profile/api/profileApi';
+import { useEffect } from 'react';
 import { ApiClientError } from '@/lib/apiClient';
 import { useAuthStore } from '@/lib/authStore';
 
@@ -32,13 +36,32 @@ export function ProfilePage() {
   const updateProfileMutation = useUpdateProfile();
   const uploadAvatarMutation = useUploadAvatar();
   const removeAvatarMutation = useRemoveAvatar();
+  const uploadSignatureMutation = useUploadSignature();
+  const removeSignatureMutation = useRemoveSignature();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const signatureInputRef = useRef<HTMLInputElement>(null);
+  const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
 
   const [fullName, setFullName] = useState(user?.fullName ?? '');
   const [idCardNo, setIdCardNo] = useState(user?.idCardNo ?? '');
   const [clientFileError, setClientFileError] = useState<string | null>(null);
 
   if (!user) return null;
+
+  useEffect(() => {
+    let active = true;
+    if (user?.hasSignature) {
+      downloadSignature()
+        .then((blob) => {
+          if (active) setSignatureUrl(URL.createObjectURL(blob));
+        })
+        .catch(() => {});
+    } else {
+      setSignatureUrl(null);
+    }
+    return () => { active = false; };
+  }, [user?.hasSignature]);
+
 
   const isDirty =
     (fullName.trim() !== user.fullName && fullName.trim().length > 0) ||
@@ -74,12 +97,40 @@ export function ProfilePage() {
     uploadAvatarMutation.mutate(file);
   };
 
+
+  const handleSignatureFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    
+    setClientFileError(null);
+    if (!ACCEPTED_TYPES.includes(file.type)) {
+      setClientFileError('Please choose a JPEG or PNG image for signature.');
+      return;
+    }
+
+    if (file.size > CLIENT_MAX_BYTES) {
+      setClientFileError('Signature must be 3MB or smaller.');
+      return;
+    }
+
+    uploadSignatureMutation.mutate(file);
+  };
+
   const photoErrorText =
     clientFileError ??
     (uploadAvatarMutation.isError
       ? errorMessage(uploadAvatarMutation.error, 'Unable to upload the photo.')
       : removeAvatarMutation.isError
         ? errorMessage(removeAvatarMutation.error, 'Unable to remove the photo.')
+        : null);
+
+  const signatureErrorText =
+    clientFileError ??
+    (uploadSignatureMutation.isError
+      ? errorMessage(uploadSignatureMutation.error, 'Unable to upload the signature.')
+      : removeSignatureMutation.isError
+        ? errorMessage(removeSignatureMutation.error, 'Unable to remove the signature.')
         : null);
 
   return (
@@ -181,6 +232,57 @@ export function ProfilePage() {
           </p>
         )}
       </div>
+
+      <div className="border-border bg-card flex flex-col gap-6 rounded-lg border p-6">
+        <div>
+          <h2 className="text-lg font-medium">Signature</h2>
+          <p className="text-muted-foreground mt-1 text-sm">Upload a transparent image of your signature for use on Cost Sheets.</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex h-16 w-32 items-center justify-center rounded-md border border-dashed bg-slate-50 dark:bg-slate-900">
+            {signatureUrl ? (
+              <img src={signatureUrl} alt="Signature" className="h-full object-contain mix-blend-multiply dark:mix-blend-lighten" />
+            ) : (
+              <span className="text-xs text-slate-400">No signature</span>
+            )}
+          </div>
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={uploadSignatureMutation.isPending}
+                onClick={() => signatureInputRef.current?.click()}
+              >
+                {uploadSignatureMutation.isPending ? 'Uploading…' : 'Upload Signature'}
+              </Button>
+              {user.hasSignature && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={removeSignatureMutation.isPending}
+                  onClick={() => removeSignatureMutation.mutate()}
+                >
+                  {removeSignatureMutation.isPending ? 'Removing…' : 'Remove'}
+                </Button>
+              )}
+            </div>
+            <input
+              ref={signatureInputRef}
+              type="file"
+              accept="image/jpeg,image/png"
+              className="hidden"
+              aria-label="Upload signature"
+              onChange={handleSignatureFileChange}
+            />
+            <p className="text-muted-foreground text-xs">JPEG or PNG, up to 3MB.</p>
+          </div>
+        </div>
+        {signatureErrorText && <p className="text-destructive text-sm">{signatureErrorText}</p>}
+      </div>
+
     </div>
   );
 }

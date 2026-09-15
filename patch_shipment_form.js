@@ -1,52 +1,108 @@
 const fs = require('fs');
+
 let file = fs.readFileSync('apps/web/src/features/shipments/components/ShipmentForm.tsx', 'utf8');
 
-// 1. Add useCreateAirline to imports
 file = file.replace(
-  `  useAirlines,
-  useAirports,
-  useCommodities,
-  useConsignees,
-  useCreateFlight,
-  useFlights,
-  useShippers,
-} from '@/features/masterdata/hooks/useMasterdata';`,
-  `  useAirlines,
-  useAirports,
-  useCommodities,
-  useConsignees,
-  useCreateAirline,
-  useCreateFlight,
-  useFlights,
-  useShippers,
-} from '@/features/masterdata/hooks/useMasterdata';`
+  `  const mawbNoField = register('mawbNo');
+
+  const submit = handleSubmit((values) => {`,
+  `  const mawbNoField = register('mawbNo');
+
+  const currentAirlineId = watch('airlineId');
+
+  const handleMawbChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatMawbNo(e.target.value);
+    e.target.value = formatted;
+    void mawbNoField.onChange(e);
+
+    const raw = formatted.replace(/\\D/g, '');
+    if (raw.length >= 3) {
+      const prefix = raw.slice(0, 3);
+      const airline = airlinesQuery.data?.find((a) => a.awbPrefix === prefix);
+      if (airline) {
+        if (getValues('airlineId') !== airline.id) {
+          setValue('airlineId', airline.id, { shouldValidate: true, shouldDirty: true });
+          if (!isEdit) {
+            setSelectedFlightId('');
+            setValue('flightNo', '', { shouldValidate: true, shouldDirty: true });
+            setValue('depTime', '', { shouldValidate: true, shouldDirty: true });
+          }
+        }
+      }
+    }
+  };
+
+  const submit = handleSubmit((values) => {`
 );
 
-// 2. Add the mutation hook
+// In edit mode
 file = file.replace(
-  `  const airlinesQuery = useAirlines();`,
-  `  const airlinesQuery = useAirlines();
-  const createAirlineMutation = useCreateAirline();`
+  `            <Input
+              id="mawbNo"
+              {...mawbNoField}
+              inputMode="numeric"
+              maxLength={13}
+              placeholder="123 4567 8912"
+              onChange={(e) => {
+                e.target.value = formatMawbNo(e.target.value);
+                void mawbNoField.onChange(e);
+              }}
+            />`,
+  `            <Input
+              id="mawbNo"
+              {...mawbNoField}
+              inputMode="numeric"
+              maxLength={13}
+              placeholder="123 4567 8912"
+              onChange={handleMawbChange}
+            />`
 );
 
-// 3. Update the onCreate logic
+// In create mode
 file = file.replace(
-`                const airline = airlinesQuery.data?.find((a) => a.code === code);
-                if (!airline) {
-                  setFlightCreateError(
-                    \`No airline found with code "\${code}". Add it in Master Data first.\`,
-                  );
-                  throw new Error('Unknown airline code');
-                }`,
-`                let airline = airlinesQuery.data?.find((a) => a.code === code);
-                if (!airline) {
-                  try {
-                    airline = await createAirlineMutation.mutateAsync({ code, name: \`\${code} (Auto-created)\` });
-                  } catch (err) {
-                    setFlightCreateError(\`Failed to auto-create airline "\${code}".\`);
-                    throw err;
-                  }
-                }`
+  `            <Input
+              id="mawbNo"
+              {...mawbNoField}
+              inputMode="numeric"
+              maxLength={13}
+              placeholder="123 4567 8912"
+              onChange={(e) => {
+                e.target.value = formatMawbNo(e.target.value);
+                void mawbNoField.onChange(e);
+              }}
+            />`,
+  `            <Input
+              id="mawbNo"
+              {...mawbNoField}
+              inputMode="numeric"
+              maxLength={13}
+              placeholder="123 4567 8912"
+              onChange={handleMawbChange}
+            />`
+);
+
+// Filter flight options in Create mode
+file = file.replace(
+  `              options={
+                flightsQuery.data?.map((flight) => {
+                  const airline = airlinesQuery.data?.find((a) => a.id === flight.airlineId);
+                  return {
+                    id: flight.id,
+                    name: airline ? displayFlight(airline.code, flight.flightNo) : flight.flightNo,
+                  };
+                }) ?? []
+              }`,
+  `              options={
+                flightsQuery.data
+                  ?.filter((flight) => (currentAirlineId ? flight.airlineId === currentAirlineId : true))
+                  .map((flight) => {
+                    const airline = airlinesQuery.data?.find((a) => a.id === flight.airlineId);
+                    return {
+                      id: flight.id,
+                      name: airline ? displayFlight(airline.code, flight.flightNo) : flight.flightNo,
+                    };
+                  }) ?? []
+              }`
 );
 
 fs.writeFileSync('apps/web/src/features/shipments/components/ShipmentForm.tsx', file);

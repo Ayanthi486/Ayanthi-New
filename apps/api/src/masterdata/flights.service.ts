@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { CreateFlightRequest, Flight } from '@hub-lanka/shared';
+import type { CreateFlightRequest, Flight, UpdateFlightRequest } from '@hub-lanka/shared';
 import { AuditService } from '../audit/audit.service';
 import { NotFoundError } from '../common/errors/app-error';
 import type { RequestUser } from '../identity/types';
@@ -7,7 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { parseTime24 } from '../shipment/shipment.util';
 import { toFlight } from './masterdata.util';
 
-const FLIGHT_WITH_AIRLINE_INCLUDE = { airline: { select: { name: true } } } as const;
+const FLIGHT_WITH_AIRLINE_INCLUDE = { airline: { select: { name: true, code: true } } } as const;
 
 /**
  * The "flight adding feature": airline + flight number + confirmed
@@ -45,6 +45,27 @@ export class FlightsService {
         }),
     );
     return toFlight(created);
+  }
+
+  async update(id: string, input: UpdateFlightRequest, actor: RequestUser): Promise<Flight> {
+    const updated = await this.auditService.auditedTransaction(
+      this.prisma,
+      { userId: actor.id, ipAddress: null, userAgent: null },
+      async (tx) => {
+        const existing = await tx.flight.findUnique({ where: { id } });
+        if (!existing) throw new NotFoundError('Flight not found');
+        return tx.flight.update({
+          where: { id },
+          data: {
+            airlineId: input.airlineId,
+            flightNo: input.flightNo,
+            depTime: parseTime24(input.depTime),
+          },
+          include: { airline: true },
+        });
+      },
+    );
+    return toFlight(updated);
   }
 
   async deactivate(id: string, actor: RequestUser): Promise<Flight> {

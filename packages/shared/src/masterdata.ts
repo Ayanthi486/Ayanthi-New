@@ -17,8 +17,14 @@ export const createShipperRequestSchema = z.object({
 });
 export type CreateShipperRequest = z.infer<typeof createShipperRequestSchema>;
 
+export const updateShipperRequestSchema = createShipperRequestSchema;
+export type UpdateShipperRequest = z.infer<typeof updateShipperRequestSchema>;
+
 export const createConsigneeRequestSchema = createShipperRequestSchema;
 export type CreateConsigneeRequest = z.infer<typeof createConsigneeRequestSchema>;
+
+export const updateConsigneeRequestSchema = createConsigneeRequestSchema;
+export type UpdateConsigneeRequest = z.infer<typeof updateConsigneeRequestSchema>;
 
 export const shipperSchema = z.object({
   id: z.string(),
@@ -45,13 +51,18 @@ const airlineCode = z
 export const createAirlineRequestSchema = z.object({
   code: airlineCode,
   name,
+  awbPrefix: z.string().trim().regex(/^\d{3}$/, 'MAWB Prefix must be exactly 3 digits').optional().nullable(),
 });
 export type CreateAirlineRequest = z.infer<typeof createAirlineRequestSchema>;
+
+export const updateAirlineRequestSchema = createAirlineRequestSchema;
+export type UpdateAirlineRequest = z.infer<typeof updateAirlineRequestSchema>;
 
 export const airlineSchema = z.object({
   id: z.string(),
   code: z.string(),
   name: z.string(),
+  awbPrefix: z.string().nullable(),
   isActive: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -70,6 +81,9 @@ export const createAirportRequestSchema = z.object({
   name,
 });
 export type CreateAirportRequest = z.infer<typeof createAirportRequestSchema>;
+
+export const updateAirportRequestSchema = createAirportRequestSchema;
+export type UpdateAirportRequest = z.infer<typeof updateAirportRequestSchema>;
 
 export const airportSchema = z.object({
   id: z.string(),
@@ -101,10 +115,14 @@ export const createFlightRequestSchema = z.object({
 });
 export type CreateFlightRequest = z.infer<typeof createFlightRequestSchema>;
 
+export const updateFlightRequestSchema = createFlightRequestSchema;
+export type UpdateFlightRequest = z.infer<typeof updateFlightRequestSchema>;
+
 export const flightSchema = z.object({
   id: z.string(),
   airlineId: z.string(),
   airlineName: z.string(),
+  airlineCode: z.string(),
   flightNo: z.string(),
   depTime: z.string(),
   isActive: z.boolean(),
@@ -124,6 +142,9 @@ export const createCommodityRequestSchema = z.object({
   delayHours: time24,
 });
 export type CreateCommodityRequest = z.infer<typeof createCommodityRequestSchema>;
+
+export const updateCommodityRequestSchema = createCommodityRequestSchema;
+export type UpdateCommodityRequest = z.infer<typeof updateCommodityRequestSchema>;
 
 export const commoditySchema = z.object({
   id: z.string(),

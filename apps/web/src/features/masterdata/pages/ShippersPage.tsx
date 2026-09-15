@@ -13,6 +13,7 @@ import { MasterDataNav } from '@/features/masterdata/components/MasterDataNav';
 import {
   useCreateShipper,
   useDeactivateShipper,
+  useUpdateShipper,
   useShippers,
 } from '@/features/masterdata/hooks/useMasterdata';
 
@@ -45,6 +46,7 @@ export function ShippersPage() {
         useList={useShippers}
         useCreate={useCreateShipper}
         useDeactivate={useDeactivateShipper}
+      useUpdate={useUpdateShipper}
         renderCreateFields={(register) => (
           <>
             <div className="flex flex-col gap-1.5">

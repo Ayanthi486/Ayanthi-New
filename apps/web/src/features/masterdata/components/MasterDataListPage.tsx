@@ -1,5 +1,6 @@
 import type { ColumnDef } from '@tanstack/react-table';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import { MasterDataEditDialog } from './MasterDataEditDialog';
 import { useForm, type FieldValues, type Resolver } from 'react-hook-form';
 import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query';
 import { DataTable } from '@/components/shared/DataTable';
@@ -23,6 +24,7 @@ interface MasterDataListPageProps<TRow extends BaseRow, TCreate extends FieldVal
   useList: () => UseQueryResult<TRow[]>;
   useCreate: () => UseMutationResult<TRow, unknown, TCreate>;
   useDeactivate: () => UseMutationResult<TRow, unknown, string>;
+  useUpdate?: () => UseMutationResult<TRow, unknown, { id: string; input: TCreate }>;
 }
 
 /**
@@ -40,7 +42,9 @@ export function MasterDataListPage<TRow extends BaseRow, TCreate extends FieldVa
   useList,
   useCreate,
   useDeactivate,
+  useUpdate,
 }: MasterDataListPageProps<TRow, TCreate>) {
+  const [editingRow, setEditingRow] = useState<TRow | null>(null);
   const listQuery = useList();
   const createMutation = useCreate();
   const deactivateMutation = useDeactivate();
@@ -66,19 +70,31 @@ export function MasterDataListPage<TRow extends BaseRow, TCreate extends FieldVa
     {
       id: 'actions',
       header: 'Actions',
-      cell: ({ row }) =>
-        row.original.isActive ? (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={deactivateMutation.isPending}
-            onClick={() => deactivateMutation.mutate(row.original.id)}
-          >
-            Deactivate
-          </Button>
-        ) : (
-          <span className="text-muted-foreground text-xs">—</span>
-        ),
+      cell: ({ row }) => (
+        <div className="flex gap-2">
+          {useUpdate && row.original.isActive && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditingRow(row.original)}
+            >
+              Edit
+            </Button>
+          )}
+          {row.original.isActive ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={deactivateMutation.isPending}
+              onClick={() => deactivateMutation.mutate(row.original.id)}
+            >
+              Deactivate
+            </Button>
+          ) : (
+            <span className="text-muted-foreground text-xs my-auto">—</span>
+          )}
+        </div>
+      ),
     },
   ];
 
@@ -110,6 +126,15 @@ export function MasterDataListPage<TRow extends BaseRow, TCreate extends FieldVa
         </Button>
       </form>
 
+      {editingRow && useUpdate && (
+        <MasterDataEditDialog
+          row={editingRow}
+          resolver={resolver}
+          renderCreateFields={renderCreateFields}
+          useUpdate={useUpdate}
+          onClose={() => setEditingRow(null)}
+        />
+      )}
       <DataTable
         columns={allColumns}
         data={listQuery.data ?? []}

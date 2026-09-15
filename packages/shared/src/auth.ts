@@ -90,6 +90,8 @@ export const authUserSchema = z.object({
   // URL. The client fetches the actual bytes from GET /me/avatar as an
   // authenticated request (ARCHITECTURE §12: never a public bucket/link).
   hasAvatar: z.boolean(),
+  // Whether a signature image is set, fetched from GET /me/signature
+  hasSignature: z.boolean(),
   // National Identity Card number, self-service editable via Profile — used
   // to auto-populate the Security Clearance certificate's NIC field.
   idCardNo: z.string().nullable(),

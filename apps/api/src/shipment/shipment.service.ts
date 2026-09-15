@@ -56,11 +56,43 @@ export class ShipmentService {
     private readonly permissionsService: PermissionsService,
   ) {}
 
+  private async assertUniqueCusdec(tx: any, cusdecNo: string | null | undefined, excludeId?: string) {
+    if (!cusdecNo) return;
+    const existing = await tx.shipment.findFirst({
+      where: {
+        cusdecNo,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+    });
+    if (existing) {
+      throw new ValidationError(`CusDec Number "${cusdecNo}" is already used by Shipment ${existing.shipmentNo}.`);
+    }
+  }
+
+  private async autoLearnMawbPrefix(tx: any, mawbNo: string | null | undefined, airlineId: string | null | undefined) {
+    if (mawbNo && airlineId) {
+      const raw = mawbNo.replace(/\D/g, '');
+      if (raw.length >= 3) {
+        const prefix = raw.slice(0, 3);
+        const airline = await tx.airline.findUnique({ where: { id: airlineId } });
+        if (airline && !airline.awbPrefix) {
+          await tx.airline.update({
+            where: { id: airline.id },
+            data: { awbPrefix: prefix },
+          });
+        }
+      }
+    }
+  }
+
   async create(input: CreateShipmentRequest, actor: RequestUser): Promise<Shipment> {
     const created = await this.auditService.auditedTransaction(
       this.prisma,
       { userId: actor.id, ipAddress: null, userAgent: null },
       async (tx) => {
+        await this.autoLearnMawbPrefix(tx, input.mawbNo, input.airlineId);
+        await this.assertUniqueCusdec(tx, input.cusdecNo);
+        
         await this.assertActiveReferences(tx, {
           airlineId: input.airlineId,
           shipperId: input.shipperId,
@@ -201,6 +233,9 @@ export class ShipmentService {
         }
 
         const { version, ...changes } = input;
+        await this.autoLearnMawbPrefix(tx, changes.mawbNo ?? existing.mawbNo, changes.airlineId ?? existing.airlineId);
+        await this.assertUniqueCusdec(tx, changes.cusdecNo, existing.id);
+
         await this.assertActiveReferences(tx, {
           airlineId: changes.airlineId,
           shipperId: changes.shipperId,

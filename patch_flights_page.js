@@ -1,48 +1,78 @@
 const fs = require('fs');
-let file = fs.readFileSync('apps/web/src/features/masterdata/pages/FlightsPage.tsx', 'utf8');
 
-// 1. Add useCreateAirline to imports
-file = file.replace(
-  `  useAirlines,
+const content = `import { zodResolver } from '@hookform/resolvers/zod';
+import type { ColumnDef } from '@tanstack/react-table';
+import {
+  createFlightRequestSchema,
+  type CreateFlightRequest,
+  type Flight,
+} from '@hub-lanka/shared';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select } from '@/components/ui/select';
+import { MasterDataListPage } from '@/features/masterdata/components/MasterDataListPage';
+import {
+  useAirlines,
   useCreateFlight,
   useDeactivateFlight,
   useFlights,
-} from '@/features/masterdata/hooks/useMasterdata';`,
-  `  useAirlines,
-  useCreateAirline,
-  useCreateFlight,
-  useDeactivateFlight,
-  useFlights,
-} from '@/features/masterdata/hooks/useMasterdata';`
-);
+  useUpdateFlight,
+} from '@/features/masterdata/hooks/useMasterdata';
 
-// 2. Add the mutation hook
-file = file.replace(
-  `  const airlinesQuery = useAirlines();`,
-  `  const airlinesQuery = useAirlines();
-  const createAirlineMutation = useCreateAirline();`
-);
+const columns: ColumnDef<Flight, unknown>[] = [
+  { header: 'Airline', accessorKey: 'airlineName' },
+  { header: 'Flight No', accessorKey: 'flightNo' },
+  { header: 'Departure Time', accessorKey: 'depTime' },
+];
 
-// 3. Update the onSubmit logic
-file = file.replace(
-`    const airline = airlinesQuery.data?.find((a) => a.code === code);
-    if (!airline) {
-      setError('flightNumber', {
-        message: \`No airline found with code "\${code}". Add it in Master Data → Airlines first.\`,
-      });
-      return;
-    }`,
-`    let airline = airlinesQuery.data?.find((a) => a.code === code);
-    if (!airline) {
-      try {
-        airline = await createAirlineMutation.mutateAsync({ code, name: \`\${code} (Auto-created)\` });
-      } catch (err) {
-        setError('flightNumber', {
-          message: \`Failed to auto-create airline "\${code}".\`,
-        });
-        return;
-      }
-    }`
-);
+export function FlightsPage() {
+  const airlinesQuery = useAirlines();
 
-fs.writeFileSync('apps/web/src/features/masterdata/pages/FlightsPage.tsx', file);
+  return (
+    <MasterDataListPage<Flight, CreateFlightRequest>
+      title="Flights"
+      description="Referenced by shipments — deactivating a flight keeps its history intact. Executive and Manager may both add one, deactivating is Manager-only."
+      resolver={zodResolver(createFlightRequestSchema)}
+      columns={columns}
+      useList={useFlights}
+      useCreate={useCreateFlight}
+      useDeactivate={useDeactivateFlight}
+      useUpdate={useUpdateFlight}
+      renderCreateFields={(register) => (
+        <>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="flight-airline">Airline</Label>
+            <Select id="flight-airline" {...register('airlineId')}>
+              <option value="">Select airline…</option>
+              {airlinesQuery.data?.map((airline) => (
+                <option key={airline.id} value={airline.id}>
+                  {airline.code} — {airline.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="flight-no">Flight No</Label>
+            <Input
+              id="flight-no"
+              placeholder="e.g. 0654"
+              maxLength={4}
+              {...register('flightNo')}
+              onChange={(e) => {
+                e.target.value = e.target.value.replace(/\\D/g, '').slice(0, 4);
+                register('flightNo').onChange(e);
+              }}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="flight-dep-time">Departure Time (24h)</Label>
+            <Input id="flight-dep-time" type="time" {...register('depTime')} />
+          </div>
+        </>
+      )}
+    />
+  );
+}
+`;
+
+fs.writeFileSync('apps/web/src/features/masterdata/pages/FlightsPage.tsx', content);

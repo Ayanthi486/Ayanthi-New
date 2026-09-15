@@ -12,11 +12,13 @@ import {
   useAirlines,
   useCreateAirline,
   useDeactivateAirline,
+  useUpdateAirline,
 } from '@/features/masterdata/hooks/useMasterdata';
 
 const columns: ColumnDef<Airline, unknown>[] = [
   { header: 'Code', accessorKey: 'code' },
   { header: 'Name', accessorKey: 'name' },
+  { header: 'MAWB Prefix', accessorKey: 'awbPrefix' },
 ];
 
 /**
@@ -35,6 +37,7 @@ export function AirlinesPage() {
       useList={useAirlines}
       useCreate={useCreateAirline}
       useDeactivate={useDeactivateAirline}
+      useUpdate={useUpdateAirline}
       renderCreateFields={(register) => {
         const codeField = register('code');
         return (
@@ -58,6 +61,15 @@ export function AirlinesPage() {
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="airline-name">Name</Label>
               <Input id="airline-name" placeholder="e.g. Emirates" {...register('name')} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="airline-prefix">MAWB Prefix</Label>
+              <Input
+                id="airline-prefix"
+                placeholder="e.g. 176"
+                maxLength={3}
+                {...register('awbPrefix')}
+              />
             </div>
           </>
         );

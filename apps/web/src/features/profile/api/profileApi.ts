@@ -30,3 +30,25 @@ export async function downloadAvatar(): Promise<Blob> {
   }
   return response.blob();
 }
+
+export async function uploadSignature(file: File): Promise<MeResponse> {
+  const form = new FormData();
+  form.set('signature', file);
+  return apiFetch<MeResponse>('/me/signature', { method: 'POST', body: form });
+}
+
+export async function removeSignature(): Promise<MeResponse> {
+  return apiFetch<MeResponse>('/me/signature', { method: 'DELETE' });
+}
+
+export async function downloadSignature(): Promise<Blob> {
+  const accessToken = useAuthStore.getState().accessToken;
+  const response = await fetch(`${API_BASE_URL}/me/signature`, {
+    credentials: 'include',
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  });
+  if (!response.ok) {
+    throw new ApiClientError('Unable to load the signature.', 'SIGNATURE_ERROR', response.status);
+  }
+  return response.blob();
+}

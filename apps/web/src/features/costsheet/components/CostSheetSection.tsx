@@ -22,6 +22,9 @@ import {
 } from '@/features/costsheet/hooks/useCostSheet';
 import { ApiClientError } from '@/lib/apiClient';
 import { escapeHtml } from '@/lib/utils';
+import { useAuthStore } from '@/lib/authStore';
+import { downloadSignature } from '@/features/profile/api/profileApi';
+import { useEffect } from 'react';
 
 const formatAmount = (val: string | number | null | undefined): string => {
   if (val === null || val === undefined || val === '') return '';
@@ -33,7 +36,7 @@ const formatAmount = (val: string | number | null | undefined): string => {
 
 
 
-function printCostSheet(costSheet: CostSheet, shipment: Shipment): void {
+function printCostSheet(costSheet: CostSheet, shipment: Shipment, signatureBase64: string | null): void {
   const printWindow = window.open('about:blank', '_blank');
   if (!printWindow) return;
 
@@ -53,7 +56,8 @@ function printCostSheet(costSheet: CostSheet, shipment: Shipment): void {
     return `${day}.${month}.${year}`;
   };
 
-  const flightStr = shipment.flightNo ? `${escapeHtml(shipment.flightNo)} - ${formatFlightDate(shipment.flightDate)}` : formatFlightDate(shipment.flightDate);
+  const combinedFlight = shipment.flightNo ? (shipment.airlineCode ? `${shipment.airlineCode}${shipment.flightNo}` : shipment.flightNo) : null;
+  const flightStr = combinedFlight ? `${escapeHtml(combinedFlight)} - ${formatFlightDate(shipment.flightDate)}` : formatFlightDate(shipment.flightDate);
 
   const html = `<!doctype html>
     <html>
@@ -140,6 +144,25 @@ function printCostSheet(costSheet: CostSheet, shipment: Shipment): void {
             <td style="border: 1px solid #000; padding: 4px; vertical-align: top; min-height: 40px;">${escapeHtml(costSheet.remarks ?? '')}</td>
           </tr>
         </table>
+
+        <table style="width: 100%; border: none; margin-top: 30px;">
+          <tr>
+            <td style="border: none; padding: 4px; text-align: left; width: 33%; vertical-align: bottom;">
+              <div style="height: 50px; margin-bottom: 5px;">
+                ${signatureBase64 ? `<img src="${signatureBase64}" style="max-height: 50px; mix-blend-mode: multiply;" alt="Signature" />` : ''}
+              </div>
+              <div style="border-top: 1px solid #000; width: 80%; padding-top: 2px;">Prepared By</div>
+            </td>
+            <td style="border: none; padding: 4px; text-align: left; width: 33%; vertical-align: bottom;">
+              <div style="height: 50px; margin-bottom: 5px;"></div>
+              <div style="border-top: 1px solid #000; width: 80%; padding-top: 2px;">Checked By</div>
+            </td>
+            <td style="border: none; padding: 4px; text-align: left; width: 33%; vertical-align: bottom;">
+              <div style="height: 50px; margin-bottom: 5px;"></div>
+              <div style="border-top: 1px solid #000; width: 80%; padding-top: 2px;">Approved By</div>
+            </td>
+          </tr>
+        </table>
       </body>
     </html>
   `;
@@ -154,6 +177,27 @@ export function CostSheetSection({ shipmentId }: { shipmentId: string }) {
   const costSheetQuery = useCostSheet(shipmentId);
   const createMutation = useCreateCostSheet(shipmentId);
   const [confirmingCreate, setConfirmingCreate] = useState(false);
+  const user = useAuthStore((state) => state.user);
+  const [signatureBase64, setSignatureBase64] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (user?.hasSignature) {
+      downloadSignature()
+        .then((blob) => {
+          if (!active) return;
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            if (active) setSignatureBase64(reader.result as string);
+          };
+          reader.readAsDataURL(blob);
+        })
+        .catch(() => {});
+    } else {
+      setSignatureBase64(null);
+    }
+    return () => { active = false; };
+  }, [user?.hasSignature]);
 
   const notFound =
     costSheetQuery.isError &&
@@ -377,7 +421,10 @@ function CostSheetDetail({ shipmentId, costSheet }: { shipmentId: string; costSh
                 inputMode="decimal"
                 placeholder="0.00"
                 value={lineAmounts[type] ?? ''}
-                onChange={(e) => setLineAmounts((prev) => ({ ...prev, [type]: e.target.value }))}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/[^0-9.]/g, '');
+                  setLineAmounts((prev) => ({ ...prev, [type]: cleaned }));
+                }}
                 onBlur={() => {
                   setLineAmounts((prev) => {
                     const val = prev[type];

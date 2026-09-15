@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Airline } from '@hub-lanka/shared';
 import { CurrentUser } from '../identity/decorators/current-user.decorator';
@@ -6,6 +6,7 @@ import { RequirePermission } from '../identity/decorators/require-permission.dec
 import type { RequestUser } from '../identity/types';
 import { AirlinesService } from './airlines.service';
 import { CreateAirlineDto } from './dto/create-airline.dto';
+import { UpdateAirlineDto } from './dto/update-airline.dto';
 
 @ApiTags('masterdata')
 @Controller('masterdata/airlines')
@@ -24,6 +25,16 @@ export class AirlinesController {
   @RequirePermission('masterdata.airline.create')
   async create(@Body() dto: CreateAirlineDto, @CurrentUser() actor: RequestUser): Promise<Airline> {
     return this.airlinesService.create(dto, actor);
+  }
+
+  @Patch(':id')
+  @RequirePermission('masterdata.manage')
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateAirlineDto,
+    @CurrentUser() actor: RequestUser,
+  ): Promise<Airline> {
+    return this.airlinesService.update(id, dto, actor);
   }
 
   @Delete(':id')

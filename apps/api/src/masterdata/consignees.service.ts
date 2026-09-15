@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Consignee, CreateConsigneeRequest } from '@hub-lanka/shared';
+import type { Consignee, CreateConsigneeRequest, UpdateConsigneeRequest } from '@hub-lanka/shared';
 import { AuditService } from '../audit/audit.service';
 import { NotFoundError } from '../common/errors/app-error';
 import type { RequestUser } from '../identity/types';
@@ -32,6 +32,22 @@ export class ConsigneesService {
         }),
     );
     return toConsignee(created);
+  }
+
+  async update(id: string, input: UpdateConsigneeRequest, actor: RequestUser): Promise<Consignee> {
+    const updated = await this.auditService.auditedTransaction(
+      this.prisma,
+      { userId: actor.id, ipAddress: null, userAgent: null },
+      async (tx) => {
+        const existing = await tx.consignee.findUnique({ where: { id } });
+        if (!existing) throw new NotFoundError('Consignee not found');
+        return tx.consignee.update({
+          where: { id },
+          data: { name: input.name, address: input.address, contact: input.contact },
+        });
+      },
+    );
+    return toConsignee(updated);
   }
 
   async deactivate(id: string, actor: RequestUser): Promise<Consignee> {

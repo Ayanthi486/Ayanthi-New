@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Consignee } from '@hub-lanka/shared';
 import { CurrentUser } from '../identity/decorators/current-user.decorator';
@@ -6,6 +6,7 @@ import { RequirePermission } from '../identity/decorators/require-permission.dec
 import type { RequestUser } from '../identity/types';
 import { ConsigneesService } from './consignees.service';
 import { CreateConsigneeDto } from './dto/create-consignee.dto';
+import { UpdateConsigneeDto } from './dto/update-consignee.dto';
 
 @ApiTags('masterdata')
 @Controller('masterdata/consignees')
@@ -27,6 +28,16 @@ export class ConsigneesController {
     @CurrentUser() actor: RequestUser,
   ): Promise<Consignee> {
     return this.consigneesService.create(dto, actor);
+  }
+
+  @Patch(':id')
+  @RequirePermission('masterdata.manage')
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateConsigneeDto,
+    @CurrentUser() actor: RequestUser,
+  ): Promise<Consignee> {
+    return this.consigneesService.update(id, dto, actor);
   }
 
   @Delete(':id')

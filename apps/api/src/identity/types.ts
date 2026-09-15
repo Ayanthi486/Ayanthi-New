@@ -4,6 +4,7 @@ export interface RequestUser {
   email: string;
   fullName: string;
   hasAvatar: boolean;
+  hasSignature: boolean;
   idCardNo: string | null;
 }
 

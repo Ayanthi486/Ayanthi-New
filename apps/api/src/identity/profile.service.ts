@@ -20,6 +20,7 @@ interface ProfileUser {
   email: string;
   fullName: string;
   avatarStorageKey: string | null;
+  signatureStorageKey: string | null;
   idCardNo: string | null;
 }
 
@@ -147,7 +148,86 @@ export class ProfileService {
       roles,
       permissions,
       hasAvatar: user.avatarStorageKey !== null,
+      hasSignature: user.signatureStorageKey !== null,
       idCardNo: user.idCardNo,
     };
   }
+
+  async uploadSignature(file: UploadedAvatar, actor: RequestUser): Promise<MeResponse> {
+    const kind = validateFileKind(file.mimetype, file.buffer);
+    if (!kind || kind === 'pdf') {
+      throw new BusinessRuleError('Only images (JPEG, PNG) are allowed for signatures');
+    }
+
+    const saved = await this.storage.save({
+      buffer: file.buffer,
+      prefix: 'signatures',
+      extension: extensionForKind(kind),
+    });
+
+    const { user: updatedUser, previousKey } = await this.auditService.auditedTransaction(
+      this.prisma,
+      { userId: actor.id, ipAddress: null, userAgent: null },
+      async (tx) => {
+        const before = await tx.user.findUniqueOrThrow({
+          where: { id: actor.id },
+          select: { signatureStorageKey: true },
+        });
+        const updatedUser = await tx.user.update({
+          where: { id: actor.id },
+          data: { signatureStorageKey: saved.key },
+          
+        });
+        return { user: updatedUser, previousKey: before.signatureStorageKey };
+      },
+    );
+
+    if (previousKey) {
+      await this.storage.delete(previousKey).catch((err) => {
+        console.error('Failed to delete old signature:', previousKey, err);
+      });
+    }
+
+    return this.toMeResponse(updatedUser);
+  }
+
+  async removeSignature(actor: RequestUser): Promise<MeResponse> {
+    const { user: updatedUser, previousKey } = await this.auditService.auditedTransaction(
+      this.prisma,
+      { userId: actor.id, ipAddress: null, userAgent: null },
+      async (tx) => {
+        const before = await tx.user.findUniqueOrThrow({
+          where: { id: actor.id },
+          select: { signatureStorageKey: true },
+        });
+        if (!before.signatureStorageKey) throw new NotFoundError('No signature found');
+
+        const updatedUser = await tx.user.update({
+          where: { id: actor.id },
+          data: { signatureStorageKey: null },
+          
+        });
+        return { user: updatedUser, previousKey: before.signatureStorageKey };
+      },
+    );
+
+    if (previousKey) {
+      await this.storage.delete(previousKey).catch(() => {});
+    }
+    return this.toMeResponse(updatedUser);
+  }
+
+  async downloadSignature(actor: RequestUser): Promise<{ buffer: Buffer; contentType: string }> {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: actor.id },
+      select: { signatureStorageKey: true },
+    });
+    if (!user.signatureStorageKey) {
+      throw new NotFoundError('No signature is set');
+    }
+
+    const buffer = await this.storage.read(user.signatureStorageKey);
+    return { buffer, contentType: mimeTypeForKey(user.signatureStorageKey) };
+  }
+
 }

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Airport, CreateAirportRequest } from '@hub-lanka/shared';
+import type { Airport, CreateAirportRequest, UpdateAirportRequest } from '@hub-lanka/shared';
 import { AuditService } from '../audit/audit.service';
 import { ConflictError, NotFoundError } from '../common/errors/app-error';
 import { Prisma } from '../generated/prisma/client';
@@ -39,6 +39,25 @@ export class AirportsService {
       }
       throw error;
     }
+  }
+
+  async update(id: string, input: UpdateAirportRequest, actor: RequestUser): Promise<Airport> {
+    const updated = await this.auditService.auditedTransaction(
+      this.prisma,
+      { userId: actor.id, ipAddress: null, userAgent: null },
+      async (tx) => {
+        const existing = await tx.airport.findUnique({ where: { id } });
+        if (!existing) throw new NotFoundError('Airport not found');
+        return tx.airport.update({
+          where: { id },
+          data: {
+            name: input.name,
+            code: input.code,
+          },
+        });
+      },
+    );
+    return toAirport(updated);
   }
 
   async deactivate(id: string, actor: RequestUser): Promise<Airport> {

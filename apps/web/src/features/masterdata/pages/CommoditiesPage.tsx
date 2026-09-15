@@ -12,6 +12,7 @@ import {
   useCommodities,
   useCreateCommodity,
   useDeactivateCommodity,
+  useUpdateCommodity,
 } from '@/features/masterdata/hooks/useMasterdata';
 
 const columns: ColumnDef<Commodity, unknown>[] = [
@@ -31,6 +32,7 @@ export function CommoditiesPage() {
       useList={useCommodities}
       useCreate={useCreateCommodity}
       useDeactivate={useDeactivateCommodity}
+      useUpdate={useUpdateCommodity}
       renderCreateFields={(register) => {
         const codeField = register('code');
         return (

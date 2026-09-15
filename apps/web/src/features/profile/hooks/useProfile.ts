@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import type { MeResponse } from '@hub-lanka/shared';
-import { removeAvatar, updateProfile, uploadAvatar } from '@/features/profile/api/profileApi';
+import { removeAvatar, updateProfile, uploadAvatar, removeSignature, uploadSignature } from '@/features/profile/api/profileApi';
 import { useAuthStore } from '@/lib/authStore';
 
 /** Every profile mutation returns the fresh MeResponse — reuse the same
@@ -28,6 +28,20 @@ export function useUploadAvatar() {
 export function useRemoveAvatar() {
   return useMutation({
     mutationFn: removeAvatar,
+    onSuccess: applyMeResponse,
+  });
+}
+
+export function useUploadSignature() {
+  return useMutation({
+    mutationFn: uploadSignature,
+    onSuccess: applyMeResponse,
+  });
+}
+
+export function useRemoveSignature() {
+  return useMutation({
+    mutationFn: removeSignature,
     onSuccess: applyMeResponse,
   });
 }

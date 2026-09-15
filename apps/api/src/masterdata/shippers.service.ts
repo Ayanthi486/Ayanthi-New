@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { CreateShipperRequest, Shipper } from '@hub-lanka/shared';
+import type { CreateShipperRequest, Shipper, UpdateShipperRequest } from '@hub-lanka/shared';
 import { AuditService } from '../audit/audit.service';
 import { NotFoundError } from '../common/errors/app-error';
 import type { RequestUser } from '../identity/types';
@@ -32,6 +32,22 @@ export class ShippersService {
         }),
     );
     return toShipper(created);
+  }
+
+  async update(id: string, input: UpdateShipperRequest, actor: RequestUser): Promise<Shipper> {
+    const updated = await this.auditService.auditedTransaction(
+      this.prisma,
+      { userId: actor.id, ipAddress: null, userAgent: null },
+      async (tx) => {
+        const existing = await tx.shipper.findUnique({ where: { id } });
+        if (!existing) throw new NotFoundError('Shipper not found');
+        return tx.shipper.update({
+          where: { id },
+          data: { name: input.name, address: input.address, contact: input.contact },
+        });
+      },
+    );
+    return toShipper(updated);
   }
 
   async deactivate(id: string, actor: RequestUser): Promise<Shipper> {

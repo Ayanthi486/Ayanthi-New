@@ -144,3 +144,51 @@ export function useDeactivateFlight() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: KEYS.flights }),
   });
 }
+
+export function useUpdateAirport() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Parameters<typeof updateAirport>[1] }) => updateAirport(id, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['airports'] }),
+  });
+}
+
+export function useUpdateCommodity() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Parameters<typeof updateCommodity>[1] }) => updateCommodity(id, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['commodities'] }),
+  });
+}
+
+export function useUpdateFlight() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Parameters<typeof updateFlight>[1] }) => updateFlight(id, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['flights'] }),
+  });
+}
+
+export function useUpdateAirline() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Parameters<typeof updateAirline>[1] }) => updateAirline(id, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['airlines'] }),
+  });
+}
+
+export function useUpdateShipper() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Parameters<typeof updateShipper>[1] }) => updateShipper(id, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['shippers'] }),
+  });
+}
+
+export function useUpdateConsignee() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Parameters<typeof updateConsignee>[1] }) => updateConsignee(id, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['consignees'] }),
+  });
+}

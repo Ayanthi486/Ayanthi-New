@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Commodity, CreateCommodityRequest } from '@hub-lanka/shared';
+import type { Commodity, CreateCommodityRequest, UpdateCommodityRequest } from '@hub-lanka/shared';
 import { AuditService } from '../audit/audit.service';
 import { NotFoundError } from '../common/errors/app-error';
 import type { RequestUser } from '../identity/types';
@@ -38,6 +38,26 @@ export class CommoditiesService {
         }),
     );
     return toCommodity(created);
+  }
+
+  async update(id: string, input: UpdateCommodityRequest, actor: RequestUser): Promise<Commodity> {
+    const updated = await this.auditService.auditedTransaction(
+      this.prisma,
+      { userId: actor.id, ipAddress: null, userAgent: null },
+      async (tx) => {
+        const existing = await tx.commodity.findUnique({ where: { id } });
+        if (!existing) throw new NotFoundError('Commodity not found');
+        return tx.commodity.update({
+          where: { id },
+          data: {
+            name: input.name,
+            code: input.code,
+            delayHours: parseTime24(input.delayHours),
+          },
+        });
+      },
+    );
+    return toCommodity(updated);
   }
 
   async deactivate(id: string, actor: RequestUser): Promise<Commodity> {

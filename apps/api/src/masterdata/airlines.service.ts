@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Airline, CreateAirlineRequest } from '@hub-lanka/shared';
+import type { Airline, CreateAirlineRequest, UpdateAirlineRequest } from '@hub-lanka/shared';
 import { AuditService } from '../audit/audit.service';
 import { NotFoundError } from '../common/errors/app-error';
 import type { RequestUser } from '../identity/types';
@@ -29,6 +29,22 @@ export class AirlinesService {
       (tx) => tx.airline.create({ data: { code: input.code, name: input.name } }),
     );
     return toAirline(created);
+  }
+
+  async update(id: string, input: UpdateAirlineRequest, actor: RequestUser): Promise<Airline> {
+    const updated = await this.auditService.auditedTransaction(
+      this.prisma,
+      { userId: actor.id, ipAddress: null, userAgent: null },
+      async (tx) => {
+        const existing = await tx.airline.findUnique({ where: { id } });
+        if (!existing) throw new NotFoundError('Airline not found');
+        return tx.airline.update({
+          where: { id },
+          data: { name: input.name, code: input.code, awbPrefix: input.awbPrefix ?? null },
+        });
+      },
+    );
+    return toAirline(updated);
   }
 
   async deactivate(id: string, actor: RequestUser): Promise<Airline> {

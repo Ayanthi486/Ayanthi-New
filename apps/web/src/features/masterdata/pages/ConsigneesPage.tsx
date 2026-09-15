@@ -14,6 +14,7 @@ import {
   useConsignees,
   useCreateConsignee,
   useDeactivateConsignee,
+  useUpdateConsignee,
 } from '@/features/masterdata/hooks/useMasterdata';
 
 const columns: ColumnDef<Consignee, unknown>[] = [
@@ -45,6 +46,7 @@ export function ConsigneesPage() {
         useList={useConsignees}
         useCreate={useCreateConsignee}
         useDeactivate={useDeactivateConsignee}
+      useUpdate={useUpdateConsignee}
         renderCreateFields={(register) => (
           <>
             <div className="flex flex-col gap-1.5">

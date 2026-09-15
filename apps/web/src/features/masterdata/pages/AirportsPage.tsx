@@ -12,6 +12,7 @@ import {
   useAirports,
   useCreateAirport,
   useDeactivateAirport,
+  useUpdateAirport,
 } from '@/features/masterdata/hooks/useMasterdata';
 
 const columns: ColumnDef<Airport, unknown>[] = [
@@ -30,6 +31,7 @@ export function AirportsPage() {
       useList={useAirports}
       useCreate={useCreateAirport}
       useDeactivate={useDeactivateAirport}
+      useUpdate={useUpdateAirport}
       renderCreateFields={(register) => {
         const codeField = register('code');
         return (

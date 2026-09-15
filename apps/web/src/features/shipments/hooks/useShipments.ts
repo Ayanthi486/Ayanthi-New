@@ -43,7 +43,10 @@ export function useCreateShipment() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateShipmentRequest) => createShipment(input),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: SHIPMENTS_KEY }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: SHIPMENTS_KEY });
+      queryClient.invalidateQueries({ queryKey: ['airlines'] }); // Refresh airlines to pick up auto-learned MAWB prefixes
+    },
   });
 }
 
@@ -52,7 +55,10 @@ export function useUpdateShipment() {
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: UpdateShipmentRequest }) =>
       updateShipment(id, input),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: SHIPMENTS_KEY }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: SHIPMENTS_KEY });
+      queryClient.invalidateQueries({ queryKey: ['airlines'] });
+    },
   });
 }
 

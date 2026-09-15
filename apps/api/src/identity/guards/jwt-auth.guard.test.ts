@@ -71,7 +71,7 @@ describe('JwtAuthGuard', () => {
       email: 'a@b.com',
       fullName: 'A B',
       isActive: true,
-      avatarStorageKey: null,
+      avatarStorageKey: null, signatureStorageKey: null, idCardNo: null,
       sessionValidFrom: now, // bumped after the token was issued
     });
     const context = fakeContext({ headers: { authorization: 'Bearer ok' } });
@@ -86,7 +86,7 @@ describe('JwtAuthGuard', () => {
       email: 'a@b.com',
       fullName: 'A B',
       isActive: true,
-      avatarStorageKey: null,
+      avatarStorageKey: null, signatureStorageKey: null, idCardNo: null,
       sessionValidFrom: now,
     });
     const request: Record<string, unknown> = { headers: { authorization: 'Bearer ok' } };
@@ -97,7 +97,7 @@ describe('JwtAuthGuard', () => {
       id: 'u1',
       email: 'a@b.com',
       fullName: 'A B',
-      hasAvatar: false,
+      hasAvatar: false, hasSignature: false, idCardNo: null,
     });
   });
 
@@ -109,7 +109,7 @@ describe('JwtAuthGuard', () => {
       email: 'a@b.com',
       fullName: 'A B',
       isActive: true,
-      avatarStorageKey: 'avatars/some-key.jpg',
+      avatarStorageKey: "avatars/some-key.jpg", signatureStorageKey: null, idCardNo: null,
       sessionValidFrom: now,
     });
     const request: Record<string, unknown> = { headers: { authorization: 'Bearer ok' } };

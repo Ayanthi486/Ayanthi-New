@@ -192,6 +192,30 @@ export function ShipmentForm({
   // digits-only-with-spaces formatting (below) lives in one place.
   const mawbNoField = register('mawbNo');
 
+  const currentAirlineId = watch('airlineId');
+
+  const handleMawbChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatMawbNo(e.target.value);
+    e.target.value = formatted;
+    void mawbNoField.onChange(e);
+
+    const raw = formatted.replace(/\D/g, '');
+    if (raw.length >= 3) {
+      const prefix = raw.slice(0, 3);
+      const airline = airlinesQuery.data?.find((a) => a.awbPrefix === prefix);
+      if (airline) {
+        if (getValues('airlineId') !== airline.id) {
+          setValue('airlineId', airline.id, { shouldValidate: true, shouldDirty: true });
+          if (!isEdit) {
+            setSelectedFlightId('');
+            setValue('flightNo', '', { shouldValidate: true, shouldDirty: true });
+            setValue('depTime', '', { shouldValidate: true, shouldDirty: true });
+          }
+        }
+      }
+    }
+  };
+
   const submit = handleSubmit((values) => {
     onSubmit(values);
   });
@@ -222,10 +246,7 @@ export function ShipmentForm({
               inputMode="numeric"
               maxLength={13}
               placeholder="123 4567 8912"
-              onChange={(e) => {
-                e.target.value = formatMawbNo(e.target.value);
-                void mawbNoField.onChange(e);
-              }}
+              onChange={handleMawbChange}
             />
           </Field>
           <Field id="houseAwbNo" label="House AWB" error={errors.houseAwbNo?.message}>
@@ -309,10 +330,7 @@ export function ShipmentForm({
               inputMode="numeric"
               maxLength={13}
               placeholder="123 4567 8912"
-              onChange={(e) => {
-                e.target.value = formatMawbNo(e.target.value);
-                void mawbNoField.onChange(e);
-              }}
+              onChange={handleMawbChange}
             />
           </Field>
 
@@ -387,20 +405,32 @@ export function ShipmentForm({
               placeholder="e.g. EK 0654"
               inputTransform={formatFlightNumber}
               options={
-                flightsQuery.data?.map((flight) => {
-                  const airline = airlinesQuery.data?.find((a) => a.id === flight.airlineId);
-                  return {
-                    id: flight.id,
-                    name: airline ? displayFlight(airline.code, flight.flightNo) : flight.flightNo,
-                  };
-                }) ?? []
+                flightsQuery.data
+                  ?.filter((flight) => (currentAirlineId ? flight.airlineId === currentAirlineId : true))
+                  .map((flight) => {
+                    const airline = airlinesQuery.data?.find((a) => a.id === flight.airlineId);
+                    return {
+                      id: flight.id,
+                      name: airline ? displayFlight(airline.code, flight.flightNo) : flight.flightNo,
+                    };
+                  }) ?? []
               }
               isLoading={flightsQuery.isLoading || airlinesQuery.isLoading}
               value={selectedFlightId}
               onChange={(id) => {
                 setSelectedFlightId(id);
                 if (id === '') {
-                  setValue('airlineId', '', { shouldValidate: true, shouldDirty: true });
+                  // If they clear the flight, don't clear the airline if it's locked by MAWB No!
+                  const mawbNo = getValues('mawbNo') || '';
+                  const rawMawb = mawbNo.replace(/\D/g, '');
+                  let lockedAirlineId = '';
+                  if (rawMawb.length >= 3) {
+                    const prefix = rawMawb.slice(0, 3);
+                    const airline = airlinesQuery.data?.find((a) => a.awbPrefix === prefix);
+                    if (airline) lockedAirlineId = airline.id;
+                  }
+                  
+                  setValue('airlineId', lockedAirlineId, { shouldValidate: true, shouldDirty: true });
                   setValue('flightNo', '', { shouldValidate: true, shouldDirty: true });
                   setValue('depTime', '', { shouldValidate: true, shouldDirty: true });
                   return;
@@ -424,30 +454,46 @@ export function ShipmentForm({
               isCreating={createFlightMutation.isPending}
               createError={mutationErrorMessage(createFlightMutation) ?? flightCreateError}
               createFields={[
-                // key 'name' (not 'flightNo') deliberately — it's what plugs
-                // this field into the dialog's existing
-                // prefill-from-search-query and duplicate-detection behaviour.
+                {
+                  key: 'airlineId',
+                  label: 'Airline',
+                  required: true,
+                  type: 'select',
+                  options: airlinesQuery.data?.map(a => ({ value: a.id, label: `${a.code} — ${a.name}` })) ?? [],
+                  value: currentAirlineId || undefined,
+                  readOnly: Boolean(currentAirlineId),
+                },
                 {
                   key: 'name',
                   label: 'Flight Number',
                   required: true,
-                  placeholder: 'EK 0654',
-                  transform: formatFlightNumber,
+                  placeholder: 'e.g. 0654',
+                  maxLength: 4,
+                  transform: (v) => v.replace(/\D/g, '').slice(0, 4),
                 },
                 { key: 'depTime', label: 'Departure Time', required: true, type: 'time' },
               ]}
               onCreate={async (input) => {
                 setFlightCreateError(undefined);
-                const { code, flightNo } = splitFlightNumber(input.name ?? '');
-                let airline = airlinesQuery.data?.find((a) => a.code === code);
-                if (!airline) {
-                  try {
-                    airline = await createAirlineMutation.mutateAsync({ code, name: `${code} (Auto-created)` });
-                  } catch (err) {
-                    setFlightCreateError(`Failed to auto-create airline "${code}".`);
-                    throw err;
-                  }
+                const airlineId = input.airlineId;
+                const flightNo = input.name;
+                if (!airlineId) throw new Error("Airline is required");
+                if (!flightNo) throw new Error("Flight number is required");
+                
+                const airline = airlinesQuery.data?.find((a) => a.id === airlineId);
+                if (!airline) throw new Error("Selected airline not found");
+                
+                const existingFlight = flightsQuery.data?.find(
+                  (f) => f.airlineId === airlineId && f.flightNo === flightNo
+                );
+                
+                if (existingFlight) {
+                  setValue('airlineId', airline.id, { shouldValidate: true, shouldDirty: true });
+                  setValue('flightNo', existingFlight.flightNo, { shouldValidate: true, shouldDirty: true });
+                  setValue('depTime', existingFlight.depTime, { shouldValidate: true, shouldDirty: true });
+                  return { id: existingFlight.id, name: displayFlight(airline.code, existingFlight.flightNo) };
                 }
+
                 const created = await createFlightMutation.mutateAsync({
                   airlineId: airline.id,
                   flightNo,

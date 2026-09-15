@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Commodity } from '@hub-lanka/shared';
 import { CurrentUser } from '../identity/decorators/current-user.decorator';
@@ -6,6 +6,7 @@ import { RequirePermission } from '../identity/decorators/require-permission.dec
 import type { RequestUser } from '../identity/types';
 import { CommoditiesService } from './commodities.service';
 import { CreateCommodityDto } from './dto/create-commodity.dto';
+import { UpdateCommodityDto } from './dto/update-commodity.dto';
 
 @ApiTags('masterdata')
 @Controller('masterdata/commodities')
@@ -28,6 +29,16 @@ export class CommoditiesController {
     @CurrentUser() actor: RequestUser,
   ): Promise<Commodity> {
     return this.commoditiesService.create(dto, actor);
+  }
+
+  @Patch(':id')
+  @RequirePermission('masterdata.manage')
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateCommodityDto,
+    @CurrentUser() actor: RequestUser,
+  ): Promise<Commodity> {
+    return this.commoditiesService.update(id, dto, actor);
   }
 
   @Delete(':id')

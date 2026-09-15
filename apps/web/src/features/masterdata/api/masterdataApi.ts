@@ -11,6 +11,12 @@ import type {
   CreateShipperRequest,
   Flight,
   Shipper,
+  UpdateAirportRequest,
+  UpdateCommodityRequest,
+  UpdateFlightRequest,
+  UpdateAirlineRequest,
+  UpdateShipperRequest,
+  UpdateConsigneeRequest,
 } from '@hub-lanka/shared';
 import { apiFetch } from '@/lib/apiClient';
 
@@ -78,4 +84,28 @@ export async function createFlight(input: CreateFlightRequest): Promise<Flight> 
 }
 export async function deactivateFlight(id: string): Promise<Flight> {
   return apiFetch<Flight>(`/masterdata/flights/${id}`, { method: 'DELETE' });
+}
+
+export async function updateAirport(id: string, input: UpdateAirportRequest): Promise<Airport> {
+  return apiFetch(`/masterdata/airports/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+}
+
+export async function updateCommodity(id: string, input: UpdateCommodityRequest): Promise<Commodity> {
+  return apiFetch(`/masterdata/commodities/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+}
+
+export async function updateFlight(id: string, input: UpdateFlightRequest): Promise<Flight> {
+  return apiFetch(`/masterdata/flights/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+}
+
+export async function updateAirline(id: string, input: UpdateAirlineRequest): Promise<Airline> {
+  return apiFetch(`/masterdata/airlines/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+}
+
+export async function updateShipper(id: string, input: UpdateShipperRequest): Promise<Shipper> {
+  return apiFetch(`/masterdata/shippers/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+}
+
+export async function updateConsignee(id: string, input: UpdateConsigneeRequest): Promise<Consignee> {
+  return apiFetch(`/masterdata/consignees/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
 }

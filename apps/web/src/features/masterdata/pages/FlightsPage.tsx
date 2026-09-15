@@ -1,166 +1,77 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { ColumnDef } from '@tanstack/react-table';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
-import type { Flight } from '@hub-lanka/shared';
-import { DataTable } from '@/components/shared/DataTable';
-import { Button } from '@/components/ui/button';
+import {
+  createFlightRequestSchema,
+  type CreateFlightRequest,
+  type Flight,
+} from '@hub-lanka/shared';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+
+import { MasterDataListPage } from '@/features/masterdata/components/MasterDataListPage';
 import {
   useAirlines,
-  useCreateAirline,
   useCreateFlight,
   useDeactivateFlight,
   useFlights,
+  useUpdateFlight,
 } from '@/features/masterdata/hooks/useMasterdata';
-import { ApiClientError } from '@/lib/apiClient';
-import { formatFlightNumber, splitFlightNumber } from '@/lib/utils';
-
-const flightNumberPattern = /^[A-Z0-9]{2} \d{4}$/;
-const time24Pattern = /^([01]\d|2[0-3]):[0-5]\d$/;
-
-const createFlightFormSchema = z.object({
-  flightNumber: z
-    .string()
-    .trim()
-    .regex(flightNumberPattern, 'Expected format "EK 0654"'),
-  depTime: z.string().regex(time24Pattern, 'Expected 24-hour time as HH:mm'),
-});
-type CreateFlightForm = z.infer<typeof createFlightFormSchema>;
 
 const columns: ColumnDef<Flight, unknown>[] = [
   { header: 'Airline', accessorKey: 'airlineName' },
-  { header: 'Flight No', accessorKey: 'flightNo' },
+  { 
+    header: 'Flight No', 
+    accessorKey: 'flightNo',
+    cell: ({ row }) => `${row.original.airlineCode} ${row.original.flightNo}`
+  },
   { header: 'Departure Time', accessorKey: 'depTime' },
 ];
 
-/**
- * Not built on the shared MasterDataListPage: Flight's create form takes one
- * combined "EK 0654" field (mirrors the Add Shipment form's FLIGHT field),
- * not a plain 1:1 mapping onto CreateFlightRequest's {airlineId, flightNo}
- * shape, so it needs its own airline-code lookup before submitting.
- */
 export function FlightsPage() {
-  const flightsQuery = useFlights();
   const airlinesQuery = useAirlines();
-  const createAirlineMutation = useCreateAirline();
-  const createFlightMutation = useCreateFlight();
-  const deactivateMutation = useDeactivateFlight();
-
-  const {
-    register,
-    handleSubmit,
-    reset,
-    setError,
-    formState: { errors },
-  } = useForm<CreateFlightForm>({ resolver: zodResolver(createFlightFormSchema) });
-
-  const flightNumberField = register('flightNumber');
-
-  const onSubmit = handleSubmit(async (values) => {
-    const { code, flightNo } = splitFlightNumber(values.flightNumber);
-    let airline = airlinesQuery.data?.find((a) => a.code === code);
-    if (!airline) {
-      try {
-        airline = await createAirlineMutation.mutateAsync({ code, name: `${code} (Auto-created)` });
-      } catch (err) {
-        setError('flightNumber', {
-          message: `Failed to auto-create airline "${code}".`,
-        });
-        return;
-      }
-    }
-    try {
-      await createFlightMutation.mutateAsync({ airlineId: airline.id, flightNo, depTime: values.depTime });
-      reset();
-    } catch {
-      // Surfaced below via createFlightMutation.isError.
-    }
-  });
-
-  const allColumns: ColumnDef<Flight, unknown>[] = [
-    ...columns,
-    {
-      id: 'status',
-      header: 'Status',
-      cell: ({ row }) => (row.original.isActive ? 'Active' : 'Deactivated'),
-    },
-    {
-      id: 'actions',
-      header: 'Actions',
-      cell: ({ row }) =>
-        row.original.isActive ? (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={deactivateMutation.isPending}
-            onClick={() => deactivateMutation.mutate(row.original.id)}
-          >
-            Deactivate
-          </Button>
-        ) : (
-          <span className="text-muted-foreground text-xs">—</span>
-        ),
-    },
-  ];
 
   return (
-    <div className="flex flex-col gap-8">
-      <div>
-        <h1 className="text-2xl font-semibold">Flights</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Referenced by shipments — deactivating a flight keeps its history intact. Identified by
-          its airline code and flight number together (e.g. "EK 0654"); Executive and Manager may
-          both add one, deactivating is Manager-only.
-        </p>
-      </div>
-
-      <form
-        onSubmit={(e) => void onSubmit(e)}
-        className="border-border bg-card flex flex-col gap-4 rounded-lg border p-6"
-      >
-        <h2 className="font-medium">Add new</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+    <MasterDataListPage<Flight, CreateFlightRequest>
+      title="Flights"
+      description="Referenced by shipments — deactivating a flight keeps its history intact. Executive and Manager may both add one, deactivating is Manager-only."
+      resolver={zodResolver(createFlightRequestSchema)}
+      columns={columns}
+      useList={useFlights}
+      useCreate={useCreateFlight}
+      useDeactivate={useDeactivateFlight}
+      useUpdate={useUpdateFlight}
+      renderCreateFields={(register) => (
+        <>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="flight-number">Flight Number</Label>
+            <Label htmlFor="flight-airline">Airline</Label>
+            <select id="flight-airline" className="border-input h-9 rounded-md border bg-transparent px-3 text-sm" {...register('airlineId')}>
+              <option value="">Select airline…</option>
+              {airlinesQuery.data?.map((airline) => (
+                <option key={airline.id} value={airline.id}>
+                  {airline.code} — {airline.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="flight-no">Flight No</Label>
             <Input
-              id="flight-number"
-              placeholder="e.g. EK 0654"
-              {...flightNumberField}
+              id="flight-no"
+              placeholder="e.g. 0654"
+              maxLength={4}
+              {...register('flightNo')}
               onChange={(e) => {
-                e.target.value = formatFlightNumber(e.target.value);
-                void flightNumberField.onChange(e);
+                e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
+                register('flightNo').onChange(e);
               }}
             />
-            {errors.flightNumber && (
-              <p className="text-destructive text-xs">{errors.flightNumber.message}</p>
-            )}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="flight-dep-time">Departure Time (24h)</Label>
             <Input id="flight-dep-time" type="time" {...register('depTime')} />
-            {errors.depTime && <p className="text-destructive text-xs">{errors.depTime.message}</p>}
           </div>
-        </div>
-        {createFlightMutation.isError && (
-          <p className="text-destructive text-sm">
-            {createFlightMutation.error instanceof ApiClientError
-              ? createFlightMutation.error.message
-              : 'Unable to create the record.'}
-          </p>
-        )}
-        <Button type="submit" disabled={createFlightMutation.isPending} className="self-start">
-          {createFlightMutation.isPending ? 'Saving…' : 'Add'}
-        </Button>
-      </form>
-
-      <DataTable
-        columns={allColumns}
-        data={flightsQuery.data ?? []}
-        isLoading={flightsQuery.isLoading}
-        emptyMessage="No records yet."
-      />
-    </div>
+        </>
+      )}
+    />
   );
 }

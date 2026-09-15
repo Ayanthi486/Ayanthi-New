@@ -89,6 +89,7 @@ export class AuthController {
       roles,
       permissions,
       hasAvatar: user.hasAvatar,
+      hasSignature: user.hasSignature,
       idCardNo: user.idCardNo,
     };
   }

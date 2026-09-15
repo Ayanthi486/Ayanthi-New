@@ -4,67 +4,98 @@
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(0.995 0.005 260); /* Very faint cool white */
-  --foreground: oklch(0.145 0.02 260); /* Deep slate */
+
+  /* --- Core Brand Accents (True Blue, Obsidian Black & Vivid Amber Gold) --- */
+  --brand-blue: #1b44b8;
+  --brand-blue-hover: #153796;
+  --brand-blue-glow: oklch(0.48 0.22 258 / 0.25);
+
+  --brand-yellow: #f59e0b;
+  --brand-yellow-hover: #d97706;
+  --brand-yellow-soft: oklch(0.85 0.16 85 / 0.14);
+
+  --brand-black: #090c15;
+  --brand-charcoal: #121723;
+
+  /* --- Light Theme Surfaces --- */
+  /* Clean, crisp off-white with micro cool undertones */
+  --background: oklch(0.985 0.004 250);
+  --foreground: oklch(0.16 0.025 260);
+
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0.02 260);
-  
-  /* Hub Lanka brand accents, sampled from the official logo
-     (apps/web/public/assets/branding) */
-  --brand-navy: #273a85;
-  --brand-navy-foreground: oklch(1 0 0);
-  --brand-gold: #f7bf18;
+  --card-foreground: oklch(0.16 0.025 260);
 
-  --primary: var(--brand-navy);
-  --primary-foreground: oklch(1 0 0);
-  
-  /* Subtle gold tint for secondary/accent to bring warmth (charm) */
-  --secondary: color-mix(in srgb, var(--brand-gold) 15%, transparent);
-  --secondary-foreground: #8a6500;
-  
-  --muted: oklch(0.96 0.01 260);
-  --muted-foreground: oklch(0.55 0.02 260);
-  
-  --accent: color-mix(in srgb, var(--brand-gold) 15%, transparent);
-  --accent-foreground: #8a6500;
-  
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.92 0.01 260);
-  --input: oklch(0.92 0.01 260);
-  --ring: var(--brand-navy);
+  /* Primary action: Precision Deep Blue */
+  --primary: var(--brand-blue);
+  --primary-foreground: #ffffff;
 
-  /* AppHeader surface tokens */
-  --nav-surface: color-mix(in srgb, var(--brand-navy) 4%, white);
-  --nav-surface-hover: color-mix(in srgb, var(--brand-navy) 8%, white);
-  --nav-border: color-mix(in srgb, var(--brand-navy) 12%, white);
-  --nav-active: var(--brand-navy);
-  --nav-active-foreground: var(--brand-navy-foreground);
-  --profile-surface: color-mix(in srgb, var(--brand-navy) 5%, white);
-  --profile-surface-hover: color-mix(in srgb, var(--brand-navy) 10%, white);
+  /* Secondary: Subtle warm amber/gold chip surface */
+  --secondary: var(--brand-yellow-soft);
+  --secondary-foreground: #854d0e;
+
+  /* Muted surfaces & subtle borders */
+  --muted: oklch(0.95 0.008 250);
+  --muted-foreground: oklch(0.46 0.02 255);
+
+  /* Accent highlights & hover pills */
+  --accent: oklch(0.93 0.02 250);
+  --accent-foreground: var(--brand-blue);
+
+  --destructive: oklch(0.58 0.22 26);
+  --destructive-foreground: #ffffff;
+
+  --border: oklch(0.89 0.01 250);
+  --input: oklch(0.89 0.01 250);
+  --ring: var(--brand-blue);
+
+  /* --- AppHeader / Navigation Tokens --- */
+  --nav-surface: color-mix(in srgb, var(--brand-blue) 4%, white);
+  --nav-surface-hover: color-mix(in srgb, var(--brand-blue) 8%, white);
+  --nav-border: color-mix(in srgb, var(--brand-blue) 12%, #e2e8f0);
+  --nav-active: var(--brand-blue);
+  --nav-active-foreground: #ffffff;
+  --profile-surface: color-mix(in srgb, var(--brand-blue) 6%, white);
+  --profile-surface-hover: color-mix(in srgb, var(--brand-blue) 11%, white);
 }
 
 .dark {
-  --background: oklch(0.145 0.02 260);
-  --foreground: oklch(0.98 0.01 260);
-  --card: oklch(0.2 0.02 260);
-  --card-foreground: oklch(0.98 0.01 260);
-  
-  --primary: var(--brand-gold);
-  --primary-foreground: #4a3600;
-  
-  --secondary: color-mix(in srgb, var(--brand-navy) 30%, transparent);
-  --secondary-foreground: oklch(0.98 0.01 260);
-  
-  --muted: oklch(0.25 0.02 260);
-  --muted-foreground: oklch(0.7 0.02 260);
-  
-  --accent: color-mix(in srgb, var(--brand-navy) 40%, transparent);
-  --accent-foreground: oklch(0.98 0.01 260);
-  
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(0.3 0.02 260);
-  --input: oklch(0.3 0.02 260);
-  --ring: var(--brand-gold);
+  /* --- Dark Theme Surfaces (True Obsidian / Jet Black baseline) --- */
+  --background: var(--brand-black);
+  --foreground: oklch(0.97 0.005 250);
+
+  --card: var(--brand-charcoal);
+  --card-foreground: oklch(0.97 0.005 250);
+
+  /* Primary switches to high-contrast electric gold in dark mode */
+  --primary: var(--brand-yellow);
+  --primary-foreground: var(--brand-black);
+
+  /* Secondary surfaces draw depth from the brand blue */
+  --secondary: color-mix(in srgb, var(--brand-blue) 22%, transparent);
+  --secondary-foreground: oklch(0.92 0.04 250);
+
+  --muted: oklch(0.19 0.02 260);
+  --muted-foreground: oklch(0.66 0.02 250);
+
+  /* Accent highlights */
+  --accent: color-mix(in srgb, var(--brand-yellow) 14%, transparent);
+  --accent-foreground: var(--brand-yellow);
+
+  --destructive: oklch(0.62 0.22 25);
+  --destructive-foreground: #ffffff;
+
+  --border: oklch(0.24 0.02 260);
+  --input: oklch(0.24 0.02 260);
+  --ring: var(--brand-yellow);
+
+  /* --- Dark Navigation Tokens --- */
+  --nav-surface: oklch(0.13 0.02 260);
+  --nav-surface-hover: oklch(0.17 0.025 260);
+  --nav-border: oklch(0.22 0.02 260);
+  --nav-active: var(--brand-yellow);
+  --nav-active-foreground: var(--brand-black);
+  --profile-surface: oklch(0.15 0.02 260);
+  --profile-surface-hover: oklch(0.19 0.025 260);
 }
 
 @theme inline {
@@ -81,12 +112,22 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-brand-navy: var(--brand-navy);
-  --color-brand-navy-foreground: var(--brand-navy-foreground);
-  --color-brand-gold: var(--brand-gold);
+
+  /* Explicit Brand Palette Utilities */
+  --color-brand-blue: var(--brand-blue);
+  --color-brand-blue-hover: var(--brand-blue-hover);
+  --color-brand-blue-glow: var(--brand-blue-glow);
+  --color-brand-yellow: var(--brand-yellow);
+  --color-brand-yellow-hover: var(--brand-yellow-hover);
+  --color-brand-yellow-soft: var(--brand-yellow-soft);
+  --color-brand-black: var(--brand-black);
+  --color-brand-charcoal: var(--brand-charcoal);
+
+  /* Navigation Utilities */
   --color-nav-surface: var(--nav-surface);
   --color-nav-surface-hover: var(--nav-surface-hover);
   --color-nav-border: var(--nav-border);
@@ -94,6 +135,8 @@
   --color-nav-active-foreground: var(--nav-active-foreground);
   --color-profile-surface: var(--profile-surface);
   --color-profile-surface-hover: var(--profile-surface-hover);
+
+  /* Radii */
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -105,14 +148,10 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased selection:bg-brand-yellow/30 selection:text-foreground;
   }
 }
 
-/* Schedule "Print" button (SchedulePage.tsx) — landscape A4 gives the
-   grid's many columns room to fit without shrinking illegibly. Element
-   visibility for print (hiding chrome/filters/Actions) is handled inline
-   via Tailwind's `print:hidden` variant, not here. */
 @page {
   size: A4 landscape;
   margin: 12mm;

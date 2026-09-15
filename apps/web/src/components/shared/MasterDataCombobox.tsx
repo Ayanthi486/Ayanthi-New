@@ -39,7 +39,8 @@ export interface MasterDataCreateField {
   required?: boolean;
   placeholder?: string;
   /** Defaults to 'text'. 'time' renders a 24-hour picker (BR-16). 'textarea' renders a multi-line box (e.g. a postal address). */
-  type?: 'text' | 'time' | 'textarea';
+  type?: 'text' | 'time' | 'textarea' | 'select';
+  options?: { value: string; label: string }[];
   /** 'textarea' only — visible rows. Defaults to 3. */
   rows?: number;
   maxLength?: number;
@@ -378,7 +379,7 @@ function CreateMasterDataDialog({
     return {
       name: nameTransform ? nameTransform(initialName) : initialName,
       ...Object.fromEntries(
-        fields.filter((f) => f.readOnly && f.value !== undefined).map((f) => [f.key, f.value as string]),
+        fields.filter((f) => f.value !== undefined).map((f) => [f.key, f.value as string]),
       ),
     };
   });
@@ -463,7 +464,29 @@ function CreateMasterDataDialog({
                     </span>
                   )}
                 </div>
-                {field.type === 'textarea' ? (
+                {field.type === 'select' ? (
+                  <select
+                    id={`create-${field.key}`}
+                    disabled={field.readOnly}
+                    className={cn(
+                      'border-input h-9 rounded-md border bg-transparent px-3 text-sm',
+                      field.readOnly && 'bg-muted text-muted-foreground'
+                    )}
+                    value={values[field.key] ?? ''}
+                    onChange={(e) => {
+                      if (field.readOnly) return;
+                      const value = field.transform ? field.transform(e.target.value) : e.target.value;
+                      setValues((prev) => ({ ...prev, [field.key]: value }));
+                    }}
+                  >
+                    <option value="">Select...</option>
+                    {field.options?.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : field.type === 'textarea' ? (
                   <Textarea
                     id={`create-${field.key}`}
                     rows={field.rows ?? 3}

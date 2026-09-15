@@ -37,6 +37,8 @@ model User {
   // Randomised storage key for the user's own uploaded profile photo (never
   // the original filename, ARCHITECTURE §12) — null when none is set.
   avatarStorageKey String?
+  // Randomised storage key for the user's uploaded signature image
+  signatureStorageKey String?
   // National Identity Card number, self-service editable via Profile — used
   // to auto-populate the Security Clearance certificate's NIC field.
   idCardNo         String?
@@ -318,6 +320,7 @@ model Airline {
   // stored uppercase (createAirlineRequestSchema normalizes this).
   code      String
   name      String
+  awbPrefix String?
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

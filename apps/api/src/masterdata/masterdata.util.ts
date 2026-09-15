@@ -25,11 +25,12 @@ export function toShipper(
 
 export const toConsignee = toShipper;
 
-export function toAirline(row: NameActiveRow & { code: string }): Airline {
+export function toAirline(row: NameActiveRow & { code: string; awbPrefix: string | null }): Airline {
   return {
     id: row.id,
     code: row.code,
     name: row.name,
+    awbPrefix: row.awbPrefix,
     isActive: row.isActive,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -66,7 +67,7 @@ export function toFlight(
   row: {
     id: string;
     airlineId: string;
-    airline: { name: string };
+    airline: { name: string; code: string };
     flightNo: string;
     depTime: Date;
     isActive: boolean;
@@ -78,6 +79,7 @@ export function toFlight(
     id: row.id,
     airlineId: row.airlineId,
     airlineName: row.airline.name,
+    airlineCode: row.airline.code,
     flightNo: row.flightNo,
     depTime: formatTime24(row.depTime),
     isActive: row.isActive,
