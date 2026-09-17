@@ -8,6 +8,7 @@ interface DataTableProps<TData> {
   emptyMessage?: string;
   /** Hides the last column (typically Actions) when printing — shown normally on screen. */
   hideLastColumnOnPrint?: boolean;
+  getRowClassName?: (row: TData) => string;
 }
 
 /**
@@ -27,6 +28,7 @@ export function DataTable<TData>({
   isLoading,
   emptyMessage = 'No records.',
   hideLastColumnOnPrint,
+  getRowClassName,
 }: DataTableProps<TData>) {
   const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel() });
 
@@ -40,7 +42,8 @@ export function DataTable<TData>({
                 <th
                   key={header.id}
                   className={cn(
-                    'px-4 py-3 font-medium whitespace-nowrap',
+                    'px-4 py-3 font-medium whitespace-nowrap print:px-2 print:py-1 print:text-xs',
+                    (header.column.columnDef.meta as any)?.className,
                     hideLastColumnOnPrint &&
                       index === headerGroup.headers.length - 1 &&
                       'print:hidden',
@@ -58,12 +61,19 @@ export function DataTable<TData>({
           {table.getRowModel().rows.map((row) => {
             const cells = row.getVisibleCells();
             return (
-              <tr key={row.id} className="border-border border-b last:border-0">
+              <tr
+                key={row.id}
+                className={cn(
+                  'border-border border-b last:border-0 hover:bg-muted/30 transition-colors',
+                  getRowClassName?.(row.original)
+                )}
+              >
                 {cells.map((cell, index) => (
                   <td
                     key={cell.id}
                     className={cn(
-                      'px-4 py-3 whitespace-nowrap',
+                      'px-4 py-3 whitespace-nowrap print:px-2 print:py-1 print:text-xs',
+                      (cell.column.columnDef.meta as any)?.className,
                       hideLastColumnOnPrint && index === cells.length - 1 && 'print:hidden',
                     )}
                   >

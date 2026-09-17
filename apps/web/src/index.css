@@ -156,3 +156,32 @@
   size: A4 landscape;
   margin: 12mm;
 }
+
+@media print {
+  .dark {
+    --background: oklch(0.985 0.004 250);
+    --foreground: oklch(0.16 0.025 260);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.16 0.025 260);
+    --primary: var(--brand-blue);
+    --primary-foreground: #ffffff;
+    --secondary: var(--brand-yellow-soft);
+    --secondary-foreground: #854d0e;
+    --muted: oklch(0.95 0.008 250);
+    --muted-foreground: oklch(0.46 0.02 255);
+    --accent: oklch(0.93 0.02 250);
+    --accent-foreground: var(--brand-blue);
+    --destructive: oklch(0.58 0.22 26);
+    --destructive-foreground: #ffffff;
+    --border: oklch(0.89 0.01 250);
+    --input: oklch(0.89 0.01 250);
+    --ring: var(--brand-blue);
+    --nav-surface: color-mix(in srgb, var(--brand-blue) 4%, white);
+    --nav-surface-hover: color-mix(in srgb, var(--brand-blue) 8%, white);
+    --nav-border: color-mix(in srgb, var(--brand-blue) 12%, #e2e8f0);
+    --nav-active: var(--brand-blue);
+    --nav-active-foreground: #ffffff;
+    --profile-surface: color-mix(in srgb, var(--brand-blue) 6%, white);
+    --profile-surface-hover: color-mix(in srgb, var(--brand-blue) 11%, white);
+  }
+}

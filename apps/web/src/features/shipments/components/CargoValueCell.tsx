@@ -13,23 +13,34 @@ import { useAuthStore } from '@/lib/authStore';
 export function CargoValueCell({
   shipment,
   value,
+  field,
 }: {
   shipment: Shipment;
   value: string | number;
+  field: 'boxCount' | 'weightKg';
 }) {
   const hasPermission = useAuthStore((state) => state.hasPermission);
   const canEdit = ['PENDING', 'CONFIRMED', 'CANCELLED'].includes(shipment.status) && hasPermission('cargo.boxweight.enter');
 
+  let displayValue = value;
+  if (field === 'weightKg' && value !== '—' && value !== null && value !== '') {
+    const num = Number(value);
+    if (!isNaN(num)) {
+      displayValue = num.toFixed(3);
+    }
+  }
+
   if (!canEdit) {
-    return <span>{value}</span>;
+    return <span>{displayValue}</span>;
   }
 
   return (
     <CargoDialog
       shipment={shipment}
+      field={field}
       trigger={(open) => (
         <button type="button" className="underline-offset-2 hover:underline" onClick={open}>
-          {value}
+          {displayValue}
         </button>
       )}
     />

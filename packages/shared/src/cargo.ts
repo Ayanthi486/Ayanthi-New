@@ -4,10 +4,12 @@ import { z } from 'zod';
 const optional = <T extends z.ZodTypeAny>(inner: T) =>
   z.preprocess((value) => (value === '' ? undefined : value), inner.optional());
 
-const weightDecimal = z
-  .string()
-  .regex(/^\d+(\.\d{1,3})?$/, 'Expected a positive decimal with up to 3 decimal places')
-  .refine((value) => Number(value) > 0, 'Weight must be positive');
+const weightDecimal = z.preprocess(
+  (val) => (typeof val === 'string' ? val.replace(',', '.') : val),
+  z.string()
+    .regex(/^\d+(\.\d{1,3})?$/, 'Expected a positive decimal with up to 3 decimal places')
+    .refine((value) => Number(value) > 0, 'Weight must be positive')
+);
 
 /**
  * BR-06: Executive enters BOX/WEIGHT during cargo handling; editable only

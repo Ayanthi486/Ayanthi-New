@@ -1,7 +1,8 @@
 import { useState, type ChangeEvent } from 'react';
 import type { Shipment, ShipmentStatus } from '@hub-lanka/shared';
-import { STATUS_LABELS, StatusBadge } from '@/components/shared/StatusBadge';
+import { STATUS_LABELS, StatusBadge, STYLES } from '@/components/shared/StatusBadge';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -97,7 +98,7 @@ export function ChangeStatusControl({ shipment }: { shipment: Shipment }) {
     <>
       <select
         aria-label={`Status for ${shipment.shipmentNo}`}
-        className="border-input h-8 rounded-md border bg-transparent px-2 text-xs"
+        className={cn('border-input h-8 rounded-md border px-2 text-xs font-medium print:hidden', STYLES[shipment.status])}
         value={shipment.status}
         disabled={mutation.isPending}
         onChange={handleChange}
@@ -108,6 +109,9 @@ export function ChangeStatusControl({ shipment }: { shipment: Shipment }) {
           </option>
         ))}
       </select>
+      <div className="hidden print:inline-flex">
+        <StatusBadge status={shipment.status} />
+      </div>
 
       <Dialog open={departureDialogOpen} onOpenChange={setDepartureDialogOpen}>
         <DialogContent>

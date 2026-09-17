@@ -38,54 +38,61 @@ export function ScheduleGrid({
 
   const columns = useMemo<ColumnDef<Shipment, unknown>[]>(
     () => [
-      { header: 'DEP TIME', accessorKey: 'depTime' },
+      { header: 'DEP TIME', accessorKey: 'depTime', meta: { className: 'text-center' } },
       {
         header: 'MAWB NO',
         accessorKey: 'mawbNo',
+        meta: { className: 'text-center' },
         cell: ({ getValue }) => dash(getValue<string | null>()),
       },
       {
         header: 'DEST',
         accessorKey: 'destinationAirportCode',
+        meta: { className: 'text-center' },
         cell: ({ getValue }) => dash(getValue<string | null>()),
       },
       {
         id: 'flight',
         header: 'FLIGHT',
+        meta: { className: 'text-center' },
         cell: ({ row }) => displayFlight(row.original.airlineCode, row.original.flightNo),
       },
-      { header: 'DATE', accessorKey: 'flightDate' },
-      { header: 'SHIPPER', accessorKey: 'shipperName' },
-      { header: 'CONSIGNEE', accessorKey: 'consigneeName' },
+      { header: 'DATE', accessorKey: 'flightDate', meta: { className: 'text-center' } },
+      { header: 'SHIPPER', accessorKey: 'shipperName', meta: { className: 'text-center' } },
+      { header: 'CONSIGNEE', accessorKey: 'consigneeName', meta: { className: 'text-center' } },
       {
         id: 'boxCount',
         header: 'BOX',
+        meta: { className: 'text-center' },
         cell: ({ row }) => (
-          <CargoValueCell shipment={row.original} value={dash(row.original.boxCount)} />
+          <CargoValueCell shipment={row.original} value={dash(row.original.boxCount)} field="boxCount" />
         ),
       },
       {
         id: 'weightKg',
         header: 'WEIGHT',
+        meta: { className: 'text-center' },
         cell: ({ row }) => (
-          <CargoValueCell shipment={row.original} value={dash(row.original.weightKg)} />
+          <CargoValueCell shipment={row.original} value={dash(row.original.weightKg)} field="weightKg" />
         ),
       },
       // Dep Time minus the shipment's Commodity's Delay Hours — computed
       // server-side (shipment.util.ts's computeCutoffTime).
-      { header: 'CUT-OFF TIME', accessorKey: 'cutoffTime' },
+      { header: 'CUT-OFF TIME', accessorKey: 'cutoffTime', meta: { className: 'text-center' } },
       {
         id: 'status',
         header: 'STATUS',
+        meta: { className: 'text-center' },
         cell: ({ row }) => <ChangeStatusControl shipment={row.original} />,
       },
       {
         id: 'actions',
         header: 'Actions',
+        meta: { className: 'text-center' },
         cell: ({ row }) => {
           const mawbNo = row.original.mawbNo;
           return (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center gap-2">
               <Link to={`/shipments/${row.original.id}`}>
                 <Button variant="outline" size="sm">
                   View
@@ -124,6 +131,9 @@ export function ScheduleGrid({
       isLoading={isLoading}
       emptyMessage={emptyMessage}
       hideLastColumnOnPrint
+      getRowClassName={(row) =>
+        row.status === 'CANCELLED' ? 'print:line-through' : ''
+      }
     />
   );
 }

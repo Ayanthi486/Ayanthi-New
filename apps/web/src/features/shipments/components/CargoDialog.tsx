@@ -34,9 +34,11 @@ const formSchema = setCargoRequestSchema.extend({ boxCount: numericBoxCount });
 export function CargoDialog({
   shipment,
   trigger,
+  field,
 }: {
   shipment: Shipment;
   trigger: (open: () => void) => ReactNode;
+  field?: 'boxCount' | 'weightKg';
 }) {
   const [open, setOpen] = useState(false);
   const setCargoMutation = useSetCargo();
@@ -54,7 +56,7 @@ export function CargoDialog({
     resolver: zodResolver(formSchema) as Resolver<SetCargoRequest>,
     defaultValues: {
       boxCount: shipment.boxCount ?? undefined,
-      weightKg: shipment.weightKg ?? undefined,
+      weightKg: shipment.weightKg ? Number(shipment.weightKg).toFixed(3) : undefined,
       version: shipment.version,
     },
   });
@@ -62,15 +64,21 @@ export function CargoDialog({
   function openDialog() {
     reset({
       boxCount: shipment.boxCount ?? undefined,
-      weightKg: shipment.weightKg ?? undefined,
+      weightKg: shipment.weightKg ? Number(shipment.weightKg).toFixed(3) : undefined,
       version: shipment.version,
     });
     setOpen(true);
   }
 
   const submit = handleSubmit((values) => {
+    const input = {
+      version: values.version,
+      ...(field === 'boxCount' || !field ? { boxCount: values.boxCount } : {}),
+      ...(field === 'weightKg' || !field ? { weightKg: values.weightKg } : {}),
+    };
+    
     setCargoMutation.mutate(
-      { id: shipment.id, input: values },
+      { id: shipment.id, input },
       { onSuccess: () => setOpen(false) },
     );
   });
@@ -81,32 +89,43 @@ export function CargoDialog({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Box &amp; weight</DialogTitle>
+            <DialogTitle>
+              {field === 'boxCount' ? 'Box count' : field === 'weightKg' ? 'Weight' : 'Box & weight'}
+            </DialogTitle>
             <DialogDescription>
               Shipment {shipment.shipmentNo} — editable only while Pending.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
             <input type="hidden" {...register('version', { valueAsNumber: true })} />
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="cargo-boxCount">Box count</Label>
-              <Input id="cargo-boxCount" type="number" step="1" min="1" {...register('boxCount')} />
-              {errors.boxCount && (
-                <p className="text-destructive text-xs">{errors.boxCount.message}</p>
-              )}
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="cargo-weightKg">Weight (kg)</Label>
-              <Input
-                id="cargo-weightKg"
-                inputMode="decimal"
-                placeholder="e.g. 444.500"
-                {...register('weightKg')}
-              />
-              {errors.weightKg && (
-                <p className="text-destructive text-xs">{errors.weightKg.message}</p>
-              )}
-            </div>
+            {(!field || field === 'boxCount') && (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="cargo-boxCount">Box count</Label>
+                <Input id="cargo-boxCount" type="number" step="1" min="1" {...register('boxCount')} autoFocus={field === 'boxCount'} />
+                {errors.boxCount && (
+                  <p className="text-destructive text-xs">{errors.boxCount.message}</p>
+                )}
+              </div>
+            )}
+            {(!field || field === 'weightKg') && (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="cargo-weightKg">Weight (kg)</Label>
+                <Input
+                  id="cargo-weightKg"
+                  inputMode="decimal"
+                  placeholder="e.g. 444.500"
+                  {...register('weightKg', {
+                    onChange: (e) => {
+                      e.target.value = e.target.value.replace(/[^0-9.,]/g, '');
+                    }
+                  })}
+                  autoFocus={field === 'weightKg'}
+                />
+                {errors.weightKg && (
+                  <p className="text-destructive text-xs">{errors.weightKg.message}</p>
+                )}
+              </div>
+            )}
             {setCargoMutation.isError && (
               <p className="text-destructive text-sm">
                 {setCargoMutation.error instanceof ApiClientError

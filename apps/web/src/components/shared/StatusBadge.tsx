@@ -2,12 +2,12 @@ import type { ShipmentStatus } from '@hub-lanka/shared';
 import { cn } from '@/lib/utils';
 
 /** Exactly 4 colors across the 6 statuses — related states share a color (awaiting/success). */
-const STYLES: Record<ShipmentStatus, string> = {
-  PENDING: 'bg-amber-100 text-amber-800',
-  CONFIRMED: 'bg-blue-100 text-blue-800',
+export const STYLES: Record<ShipmentStatus, string> = {
+  PENDING: 'bg-yellow-100 text-yellow-800',
+  CONFIRMED: 'bg-green-100 text-green-800',
   CANCELLED: 'bg-red-100 text-red-800',
-  DEPARTED: 'bg-green-100 text-green-800',
-  PAYMENT_PENDING: 'bg-amber-100 text-amber-800',
+  DEPARTED: 'bg-blue-100 text-blue-800',
+  PAYMENT_PENDING: 'bg-yellow-100 text-yellow-800',
   PAYMENT_RECEIVED: 'bg-green-100 text-green-800',
 };
 

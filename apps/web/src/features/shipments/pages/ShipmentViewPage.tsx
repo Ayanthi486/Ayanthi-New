@@ -51,13 +51,14 @@ const FIELDS: {
     label: 'Box count',
     key: 'boxCount',
     group: 'Shipment',
-    render: (shipment) => <CargoValueCell shipment={shipment} value={shipment.boxCount ?? '—'} />,
+    render: (shipment) => <CargoValueCell shipment={shipment} value={shipment.boxCount ?? '—'} field="boxCount" />,
   },
   {
     label: 'Weight (kg)',
     key: 'weightKg',
     group: 'Shipment',
-    render: (shipment) => <CargoValueCell shipment={shipment} value={shipment.weightKg ?? '—'} />,
+    value: (shipment) => (shipment.weightKg ? Number(shipment.weightKg).toFixed(3) : '—'),
+    render: (shipment) => <CargoValueCell shipment={shipment} value={shipment.weightKg ?? '—'} field="weightKg" />,
   },
   { label: 'Airline', key: 'airlineName', group: 'Flight' },
   { 
