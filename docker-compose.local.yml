@@ -1,0 +1,162 @@
+# Portable "run the complete FFMS on your own machine" stack — for sharing
+# with another developer, NOT for a real production deployment (see
+# docker-compose.prod.yml for that; the two are not interchangeable).
+#
+# Every value below has a working default baked directly into this file, so
+# the whole stack comes up with zero configuration:
+#
+#   git clone <repo-url>
+#   cd "Hub lanka"
+#   docker compose -f docker-compose.local.yml up -d --build
+#
+# Every credential here is a shared, publicly-known local-only placeholder —
+# the same convention already used by docker-compose.yml/.env.example — never
+# real secrets, and never reused for docker-compose.prod.yml. To customise
+# anything (e.g. avoid a port clash), copy .env.local.example to .env in the
+# repo root — Docker Compose loads that file automatically regardless of
+# which compose file you pass via -f.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hublanka}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hublanka_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-hublanka}
+    volumes:
+      - hublanka_local_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER:-hublanka}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Not published by default — only other containers on this compose
+    # network need it. Uncomment for direct DB-GUI access from the host.
+    # ports:
+    #   - '${POSTGRES_PORT:-5432}:5432'
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # ports:
+    #   - '${REDIS_PORT:-6379}:6379'
+
+  # One-shot: applies all pending Prisma migrations, then exits.
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: migrate
+    restart: 'no'
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://hublanka:hublanka_dev_password@postgres:5432/hublanka?schema=public}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # One-shot: seeds roles/permissions/dev-only accounts (idempotent — safe
+  # to run on every `up`). Only in this local-sharing stack, never in
+  # docker-compose.prod.yml — see prisma/seed.ts's own doc comment on why.
+  seed:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: seed
+    restart: 'no'
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://hublanka:hublanka_dev_password@postgres:5432/hublanka?schema=public}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: 3000
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://hublanka:hublanka_dev_password@postgres:5432/hublanka?schema=public}
+      APP_DATABASE_URL: ${APP_DATABASE_URL:-postgresql://hublanka_app:hublanka_app_dev_password@postgres:5432/hublanka?schema=public}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-local-sharing-access-secret-not-for-real-use-32c}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-local-sharing-refresh-secret-not-for-real-use-32c}
+      LOG_LEVEL: info
+      LOG_PRETTY: ${LOG_PRETTY:-true}
+      STORAGE_LOCAL_DIR: /data/storage
+      REDIS_URL: redis://redis:6379
+      PRINTER_ADAPTER: pdf
+      PDF_RENDER_CONCURRENCY: '2'
+      PDF_RENDER_TIMEOUT_MS: '30000'
+    volumes:
+      - hublanka_local_storage:/data/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      seed:
+        condition: service_completed_successfully
+    ports:
+      - '${API_PORT:-3000}:3000'
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: worker
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:-postgresql://hublanka:hublanka_dev_password@postgres:5432/hublanka?schema=public}
+      APP_DATABASE_URL: ${APP_DATABASE_URL:-postgresql://hublanka_app:hublanka_app_dev_password@postgres:5432/hublanka?schema=public}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-local-sharing-access-secret-not-for-real-use-32c}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-local-sharing-refresh-secret-not-for-real-use-32c}
+      LOG_LEVEL: info
+      LOG_PRETTY: ${LOG_PRETTY:-true}
+      STORAGE_LOCAL_DIR: /data/storage
+      REDIS_URL: redis://redis:6379
+      PDF_RENDER_CONCURRENCY: '2'
+      PDF_RENDER_TIMEOUT_MS: '30000'
+    volumes:
+      - hublanka_local_storage:/data/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      seed:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      # Baked in at build time (see apps/web/Dockerfile's own comment) —
+      # `localhost` is correct for ANY machine running this stack, since it
+      # always resolves to whoever's browser is loading the page.
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000/api/v1}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - '${WEB_PORT:-8080}:80'
+
+volumes:
+  hublanka_local_postgres_data:
+  hublanka_local_storage:

@@ -202,6 +202,48 @@ docker compose up -d postgres redis
 pnpm dev
 ```
 
+## Sharing a portable local build with another developer
+
+`docker-compose.local.yml` runs the **complete** system (Postgres, Redis, API, worker, web) with
+every value defaulted inside the file itself — no `.env` to create, no domain, no registry. This is
+for handing the project to another developer to run entirely on their own machine; it is a separate
+file from `docker-compose.prod.yml` (a real production deployment) and is not meant for one.
+
+```bash
+git clone <repo-url>
+cd "Hub lanka"
+docker compose -f docker-compose.local.yml up -d --build
+```
+
+That single command builds the images, starts Postgres/Redis, runs migrations, seeds roles/
+permissions/dev-only accounts, then starts the API, worker and web app — Postgres and Redis are
+**not** published to the host (only reachable from other containers on the compose network), per
+the same posture as `docker-compose.prod.yml`.
+
+| What                       | URL / command                                                         |
+| -------------------------- | ---------------------------------------------------------------------- |
+| Web app                    | http://localhost:8080 — sign in with a seeded account (see Setup above)|
+| API                        | http://localhost:3000/api/v1                                           |
+| API Swagger docs           | http://localhost:3000/api/v1/docs                                      |
+| Health check                | http://localhost:3000/healthz                                          |
+| Check container status     | `docker compose -f docker-compose.local.yml ps`                        |
+| View logs (all services)   | `docker compose -f docker-compose.local.yml logs -f`                   |
+| View logs (one service)    | `docker compose -f docker-compose.local.yml logs -f api`               |
+| Stop the stack              | `docker compose -f docker-compose.local.yml down`                      |
+| Reset the local database    | `docker compose -f docker-compose.local.yml down -v` (also wipes uploaded receipts/avatars — both live in named Docker volumes scoped to this compose file only) |
+
+To change a default (e.g. a port already in use on your machine), copy `.env.local.example` to
+`.env` in the repo root and edit it — Docker Compose loads `.env` automatically regardless of which
+compose file you pass via `-f`. Every credential in `.env.local.example` is a shared, publicly known
+local-only placeholder (the same convention `docker-compose.yml`/`.env.example` already use) — never
+a real secret, and never the same values as `.env.production`/`.env.production.example`, which this
+workflow never reads or needs. No `docker login` is required — this workflow builds images locally
+from source and never pulls from or pushes to a registry.
+
+Because everything runs in named volumes scoped to this compose file (`docker-compose.local.yml`),
+a fresh clone on a different machine never depends on your local containers, volumes, database
+data, `.env`/`.env.production`, or any machine-specific path.
+
 ## Project structure
 
 ```

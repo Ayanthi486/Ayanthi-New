@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { CreateFlightRequest, Flight, UpdateFlightRequest } from '@hub-lanka/shared';
 import { AuditService } from '../audit/audit.service';
-import { NotFoundError } from '../common/errors/app-error';
+import { NotFoundError, ValidationError } from '../common/errors/app-error';
 import type { RequestUser } from '../identity/types';
 import { PrismaService } from '../prisma/prisma.service';
 import { parseTime24 } from '../shipment/shipment.util';
@@ -31,13 +31,19 @@ export class FlightsService {
   }
 
   async create(input: CreateFlightRequest, actor: RequestUser): Promise<Flight> {
+    const airline = await this.prisma.airline.findFirst({
+      where: { code: input.airlineCode },
+    });
+    if (!airline) {
+      throw new ValidationError(`No airline found with code "${input.airlineCode}". Add it in Master Data first.`);
+    }
     const created = await this.auditService.auditedTransaction(
       this.prisma,
       { userId: actor.id, ipAddress: null, userAgent: null },
       (tx) =>
         tx.flight.create({
           data: {
-            airlineId: input.airlineId,
+            airlineId: airline.id,
             flightNo: input.flightNo,
             depTime: parseTime24(input.depTime),
           },

@@ -106,7 +106,7 @@ const time24 = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Expected 24-hour t
 const flightNumber = z.string().trim().regex(/^\d{4}$/, 'Flight number must be exactly 4 digits (e.g. 0356)');
 
 export const createFlightRequestSchema = z.object({
-  airlineId: z.string().trim().min(1, 'Airline is required'),
+  airlineCode: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{2}$/, 'Code must be exactly 2 letters/digits (e.g. EK, G9)'),
   flightNo: flightNumber,
   // Required at creation — the shipment form relies entirely on the
   // selected/created Flight's own depTime, with no fallback field of its

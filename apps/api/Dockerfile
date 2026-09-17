@@ -70,6 +70,18 @@ WORKDIR /repo/apps/api
 ENTRYPOINT ["pnpm", "exec", "prisma", "migrate", "deploy"]
 
 # ---------------------------------------------------------------------------
+# seed — one-shot step for non-production environments only (roles,
+# permissions, dev-only accounts — see prisma/seed.ts). Not used by
+# docker-compose.prod.yml; docker-compose.local.yml runs this after
+# `migrate` so a fresh local clone has working login credentials without a
+# manual step. Same reasoning as `migrate` for building from `build` rather
+# than a pruned runtime stage: `tsx` is a devDependency.
+# ---------------------------------------------------------------------------
+FROM build AS seed
+WORKDIR /repo/apps/api
+ENTRYPOINT ["pnpm", "db:seed"]
+
+# ---------------------------------------------------------------------------
 # api — the HTTP server (main.ts)
 # ---------------------------------------------------------------------------
 FROM node:${NODE_VERSION}-slim AS api

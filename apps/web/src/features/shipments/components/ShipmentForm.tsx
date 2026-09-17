@@ -23,6 +23,7 @@ import {
   useCreateCommodity,
   useCreateConsignee,
   useCreateFlight,
+  useCreateAirline,
   useCreateShipper,
   useFlights,
   useShippers,
@@ -114,6 +115,7 @@ export function ShipmentForm({
   const createAirportMutation = useCreateAirport();
   const createCommodityMutation = useCreateCommodity();
   const createFlightMutation = useCreateFlight();
+  const createAirlineMutation = useCreateAirline();
   const hasPermission = useAuthStore((state) => state.hasPermission);
 
   // BR: shipments can't be created for a date that's already passed — the
@@ -471,10 +473,16 @@ export function ShipmentForm({
                   maxLength: 4,
                   transform: (v) => v.replace(/\D/g, '').slice(0, 4),
                 },
+                {
+                  key: 'airlineName',
+                  label: 'Airline Name (only if creating a new Airline)',
+                  required: false,
+                },
                 { key: 'depTime', label: 'Departure Time', required: true, type: 'time' },
               ]}
               onCreate={async (input) => {
                 setFlightCreateError(undefined);
+<<<<<<< HEAD
                 const airlineId = input.airlineId;
                 const flightNo = input.name;
                 if (!airlineId) throw new Error("Airline is required");
@@ -492,10 +500,25 @@ export function ShipmentForm({
                   setValue('flightNo', existingFlight.flightNo, { shouldValidate: true, shouldDirty: true });
                   setValue('depTime', existingFlight.depTime, { shouldValidate: true, shouldDirty: true });
                   return { id: existingFlight.id, name: displayFlight(airline.code, existingFlight.flightNo) };
+=======
+                const { code, flightNo } = splitFlightNumber(input.name ?? '');
+                let airline = airlinesQuery.data?.find((a) => a.code === code);
+                if (!airline) {
+                  if (!input.airlineName) {
+                    setFlightCreateError(
+                      `No airline found with code "${code}". Please provide the Airline Name to create it.`
+                    );
+                    throw new Error('Unknown airline code');
+                  }
+                  airline = await createAirlineMutation.mutateAsync({
+                    code,
+                    name: input.airlineName,
+                  });
+>>>>>>> d2ae00b (fix flight and shipment master data)
                 }
 
                 const created = await createFlightMutation.mutateAsync({
-                  airlineId: airline.id,
+                  airlineCode: airline.code,
                   flightNo,
                   depTime: input.depTime ?? '',
                 });

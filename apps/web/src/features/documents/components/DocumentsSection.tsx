@@ -136,7 +136,7 @@ export function DocumentsSection({ shipmentId }: { shipmentId: string }) {
 }
 
 /** ADF, AWB, and CUSDEC: a user-uploaded PDF, not a generated document — upload/replace, Download, Print. No fieldData form, no Issue step. */
-function UploadDocumentTab({ shipmentId, type }: { shipmentId: string; type: DocumentType }) {
+export function UploadDocumentTab({ shipmentId, type }: { shipmentId: string; type: DocumentType }) {
   const documentQuery = useDocument(shipmentId, type, true);
   const uploadMutation = useUploadDocumentFile(shipmentId, type);
   const downloadMutation = useDownloadDocumentFile();

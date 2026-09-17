@@ -4,6 +4,10 @@ import { cn } from '@/lib/utils';
 const LINKS = [
   { to: '/masterdata/shippers', label: 'Shippers' },
   { to: '/masterdata/consignees', label: 'Consignees' },
+  { to: '/masterdata/airlines', label: 'Airlines' },
+  { to: '/masterdata/airports', label: 'Airports' },
+  { to: '/masterdata/commodities', label: 'Commodities' },
+  { to: '/masterdata/flights', label: 'Flights' },
 ];
 
 /** Sub-nav between the Shippers and Consignees master-data screens — each gated by its own broader-than-masterdata.manage permission, same as Commodities/Airports/Airlines (see App.tsx). */
