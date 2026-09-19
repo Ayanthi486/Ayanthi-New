@@ -31,27 +31,57 @@ export class PermissionsGuard implements CanActivate {
     if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, targets)) {
       return true;
     }
-    if (this.reflector.getAllAndOverride<boolean>(AUTHENTICATED_ONLY_KEY, targets)) {
+
+    if (
+      this.reflector.getAllAndOverride<boolean>(
+        AUTHENTICATED_ONLY_KEY,
+        targets,
+      )
+    ) {
       return true;
     }
 
-    const required = this.reflector.getAllAndOverride<PermissionKey | undefined>(
-      REQUIRE_PERMISSION_KEY,
-      targets,
-    );
+    const required =
+      this.reflector.getAllAndOverride<PermissionKey | undefined>(
+        REQUIRE_PERMISSION_KEY,
+        targets,
+      );
+
     if (!required) {
       throw new ForbiddenException('Route has no declared permission');
     }
 
     const request = context.switchToHttp().getRequest<Request>();
-    const user = request.user;
+
+    const user = request.user as {
+      id: string;
+      email?: string;
+      roles?: string[];
+    } | undefined;
+
+    // DEBUG LOGS
+    console.log('========== PERMISSION DEBUG ==========');
+    console.log('USER OBJECT:', user);
+    console.log('USER ID:', user?.id);
+    console.log('USER EMAIL:', user?.email);
+    console.log('REQUIRED PERMISSION:', required);
+    console.log('======================================');
+
     if (!user) {
       throw new ForbiddenException('Not authenticated');
     }
 
-    const allowed = await this.permissionsService.hasPermission(user.id, required);
+    const allowed = await this.permissionsService.hasPermission(
+      user.id,
+      required,
+    );
+
+    console.log('PERMISSION RESULT:', allowed);
+
     if (!allowed) {
-      throw new ForbiddenException(`Missing permission: ${required}`);
+      throw new ForbiddenException(
+        `Missing permission: ${required}`,
+      );
     }
 
     return true;
