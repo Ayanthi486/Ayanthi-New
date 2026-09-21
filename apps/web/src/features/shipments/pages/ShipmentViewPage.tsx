@@ -57,7 +57,6 @@ const FIELDS: {
     label: 'Weight (kg)',
     key: 'weightKg',
     group: 'Shipment',
-    value: (shipment) => (shipment.weightKg ? Number(shipment.weightKg).toFixed(3) : '—'),
     render: (shipment) => <CargoValueCell shipment={shipment} value={shipment.weightKg ?? '—'} field="weightKg" />,
   },
   { label: 'Airline', key: 'airlineName', group: 'Flight' },

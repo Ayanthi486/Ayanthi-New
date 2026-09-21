@@ -273,15 +273,14 @@ describe('Analytics (e2e)', () => {
     const summaryRes = await request(server)
       .get('/api/v1/analytics/summary')
       .query({
-        groupBy: 'time',
-        period: 'day',
+        groupBy: 'commodity',
         commodityId: masterData.commodityId,
         dateFrom: dateA,
         dateTo: dateB,
       })
       .set('Authorization', `Bearer ${managerToken}`);
     expect(summaryRes.status).toBe(200);
-    expect(summaryRes.body.groups).toHaveLength(2);
+    expect(summaryRes.body.groups).toHaveLength(1);
     expect(summaryRes.body.totals.revenueLkr).toBe(summedRevenueLkr.toFixed(2));
     expect(summaryRes.body.totals.shipmentCount).toBe(rows.length);
   });

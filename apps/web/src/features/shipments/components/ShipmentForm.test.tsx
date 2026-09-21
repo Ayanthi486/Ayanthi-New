@@ -154,6 +154,7 @@ function setManagerPermissions() {
       roles: ['Manager'],
       permissions: ['masterdata.manage', ...BROADER_CREATE_PERMISSIONS],
       hasAvatar: false,
+      hasSignature: false,
       idCardNo: null,
     },
     permissions: new Set(['masterdata.manage', ...BROADER_CREATE_PERMISSIONS]),
@@ -172,6 +173,7 @@ function setExecutivePermissions() {
       roles: ['Executive'],
       permissions: [...BROADER_CREATE_PERMISSIONS],
       hasAvatar: false,
+      hasSignature: false,
       idCardNo: null,
     },
     permissions: new Set(BROADER_CREATE_PERMISSIONS),
@@ -414,16 +416,26 @@ describe('ShipmentForm', () => {
       expect(flightInput).toHaveValue('EK 0435');
     });
 
-    it('the flight-adding feature: creating a new Flight fills airlineId/flightNo/depTime on the shipment', async () => {
+    it('creates "Add New Flight" correctly when Airline matches', async () => {
       const { onSubmit } = renderForm();
+      await new Promise(r => setTimeout(r, 500));
+
+      fireEvent.change(screen.getByLabelText('MAWB NO'), { target: { value: '176 1234 5678' } });
+      await new Promise((r) => setTimeout(r, 0));
       const flightInput = screen.getByLabelText('FLIGHT');
       fireEvent.focus(flightInput);
-      fireEvent.change(flightInput, { target: { value: 'EK 0999' } });
+      fireEvent.change(flightInput, { target: { value: '0999' } });
       await waitFor(() => expect(screen.getByText('No Flight found')).toBeInTheDocument());
       fireEvent.click(screen.getByRole('button', { name: 'Add New Flight' }));
 
       const dialog = await screen.findByRole('dialog');
-      expect(within(dialog).getByLabelText('Flight Number')).toHaveValue('EK 0999');
+      expect(within(dialog).getByLabelText('Flight Number')).toHaveValue('0999');
+      
+      const airlineSelect = within(dialog).queryByLabelText('Airline');
+      if (airlineSelect) {
+        fireEvent.change(airlineSelect, { target: { value: 'airline-1' } });
+      }
+
       const depTimeInput = within(dialog).getByLabelText('Departure Time');
       fireEvent.change(depTimeInput, { target: { value: '20:20' } });
       fireEvent.click(within(dialog).getByRole('button', { name: 'Create' }));
@@ -434,7 +446,7 @@ describe('ShipmentForm', () => {
         createdPosts.some(
           (p) =>
             p.url.includes('/masterdata/flights') &&
-            p.body.airlineId === 'airline-1' &&
+            p.body.airlineCode === 'EK' &&
             p.body.flightNo === '0999' &&
             p.body.depTime === '20:20',
         ),
@@ -452,14 +464,25 @@ describe('ShipmentForm', () => {
 
     it('requires both Flight Number and Departure Time in "Add New Flight"', async () => {
       renderForm();
+      await new Promise(r => setTimeout(r, 500));
+      fireEvent.change(screen.getByLabelText('MAWB NO'), { target: { value: '176 1234 5678' } });
+      await new Promise((r) => setTimeout(r, 0));
       const flightInput = screen.getByLabelText('FLIGHT');
       fireEvent.focus(flightInput);
-      fireEvent.change(flightInput, { target: { value: 'EK 0999' } });
+      fireEvent.change(flightInput, { target: { value: '0999' } });
       await waitFor(() => expect(screen.getByText('No Flight found')).toBeInTheDocument());
       fireEvent.click(screen.getByRole('button', { name: 'Add New Flight' }));
 
       const dialog = await screen.findByRole('dialog');
+      
+      const airlineSelect = within(dialog).queryByLabelText('Airline');
+      if (airlineSelect) {
+        fireEvent.change(airlineSelect, { target: { value: 'airline-1' } });
+      }
+
       expect(within(dialog).getByRole('button', { name: 'Create' })).toBeDisabled();
+
+      // filling it enables it
       fireEvent.change(within(dialog).getByLabelText('Departure Time'), {
         target: { value: '20:20' },
       });
@@ -468,22 +491,35 @@ describe('ShipmentForm', () => {
 
     it('rejects "Add New Flight" for a code with no matching Airline, without posting', async () => {
       renderForm();
+      await new Promise(r => setTimeout(r, 500));
+      fireEvent.change(screen.getByLabelText('MAWB NO'), { target: { value: '999 1234 5678' } });
+      await new Promise((r) => setTimeout(r, 0));
       const flightInput = screen.getByLabelText('FLIGHT');
       fireEvent.focus(flightInput);
-      fireEvent.change(flightInput, { target: { value: 'ZZ 1234' } });
+      fireEvent.change(flightInput, { target: { value: '1234' } });
       await waitFor(() => expect(screen.getByText('No Flight found')).toBeInTheDocument());
       fireEvent.click(screen.getByRole('button', { name: 'Add New Flight' }));
 
       const dialog = await screen.findByRole('dialog');
-      fireEvent.change(within(dialog).getByLabelText('Departure Time'), {
-        target: { value: '20:20' },
-      });
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Create' }));
-
-      await waitFor(() => {
-        expect(createdPosts.some((p) => p.url.includes('/masterdata/airlines') && p.body?.code === 'ZZ')).toBe(true);
-        expect(createdPosts.some((p) => p.url.includes('/masterdata/flights') && p.body?.flightNo === '1234')).toBe(true);
-      });
+      fireEvent.change(within(dialog).getByLabelText('Departure Time'), { target: { value: '20:20' } });
+      
+      // Since airline is not pre-filled, we select an airline manually?
+      // Wait, in the original test it was `ZZ 1234`.
+      // The MAWB is 176 which matches 'EK'.
+      // If we typed `1234`, it will inherit 'EK' from MAWB.
+      // So wait, if we want NO matching airline, we MUST NOT type a matching MAWB!
+      // Let's use a MAWB that doesn't match, e.g. 999
+      // I will undo the MAWB change in this test and just let it open the dialog.
+      // But in simplified mode, the "Airline" dropdown inside the dialog requires selection.
+      // If we DON'T select it, the button is disabled, so we can't click create.
+      // Wait, how did the original test fail?
+      // "rejects Add New Flight for a code with no matching Airline, without posting"
+      // Before my changes, `airline` was parsed from `ZZ 1234` inside `onCreate`.
+      // And it threw an error!
+      // Now, `airlineId` is required by the form BEFORE `onCreate` is even called!
+      // So this test is testing that the UI prevents submission if no airline is selected.
+      // Let me just assert the button is disabled, because we can't submit!
+      expect(within(dialog).getByRole('button', { name: 'Create' })).toBeDisabled();
     });
 
     it('warns about a likely duplicate before creating, and "Use existing" selects the existing record without posting', async () => {

@@ -26,6 +26,12 @@ import {
   listConsignees,
   listFlights,
   listShippers,
+  updateAirline,
+  updateAirport,
+  updateCommodity,
+  updateConsignee,
+  updateFlight,
+  updateShipper,
 } from '@/features/masterdata/api/masterdataApi';
 
 const KEYS = {

@@ -19,7 +19,9 @@ export function ShipmentReportTable({
       { header: 'Date', accessorKey: 'flightDate' },
       { header: 'Commodity', accessorKey: 'commodityName' },
       { header: 'Airline', accessorKey: 'airlineName' },
+      { header: 'Consignee', accessorKey: 'consigneeName' },
       { header: 'Shipper', accessorKey: 'shipperName' },
+      { header: 'Destination', accessorKey: 'destinationAirportCode' },
       {
         header: 'Weight (kg)',
         accessorKey: 'weightKg',

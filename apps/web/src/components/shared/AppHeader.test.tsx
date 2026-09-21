@@ -18,7 +18,7 @@ const baseUser = {
   email: 'exec@hublanka.dev',
   fullName: 'Jane Perera',
   roles: ['Executive'],
-  hasAvatar: false,
+  hasAvatar: false, hasSignature: false,
   idCardNo: null,
 };
 

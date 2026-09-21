@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type {
   AnalyticsGroupBy,
-  AnalyticsPeriod,
   AnalyticsShipmentRow,
   AnalyticsSummaryResponse,
 } from '@hub-lanka/shared';
@@ -25,7 +24,10 @@ const SHIPMENT_CSV_HEADERS = [
   'Status',
   'Commodity',
   'Airline',
+  'Consignee',
   'Shipper',
+  'Destination',
+  'Sales Person',
   'Weight (kg)',
   'Chargeable Weight (kg)',
   'Exchange Rate Used',
@@ -89,14 +91,11 @@ export class AnalyticsService {
   async getSummary(
     filters: AnalyticsFilters,
     groupBy: AnalyticsGroupBy,
-    period: AnalyticsPeriod | undefined,
   ): Promise<AnalyticsSummaryResponse> {
-    const effectivePeriod = period ?? 'month';
     const rows = await this.queryShipmentReport(filters);
-    const { groups, totals } = summarize(rows, groupBy, effectivePeriod);
+    const { groups, totals } = summarize(rows, groupBy);
     return {
       groupBy,
-      period: groupBy === 'time' ? effectivePeriod : null,
       groups,
       totals,
     };
@@ -112,7 +111,10 @@ export class AnalyticsService {
         row.status,
         row.commodityName,
         row.airlineName,
+        row.consigneeName,
         row.shipperName,
+        row.destinationAirportCode,
+        row.salesPersonName,
         row.weightKg ?? '',
         row.chargeableWeightKg ?? '',
         row.exchangeRateUsed ?? '',
@@ -129,9 +131,8 @@ export class AnalyticsService {
   async exportSummaryCsv(
     filters: AnalyticsFilters,
     groupBy: AnalyticsGroupBy,
-    period: AnalyticsPeriod | undefined,
   ): Promise<string> {
-    const summary = await this.getSummary(filters, groupBy, period);
+    const summary = await this.getSummary(filters, groupBy);
     return toCsv(
       SUMMARY_CSV_HEADERS,
       [...summary.groups, summary.totals].map((group) => [

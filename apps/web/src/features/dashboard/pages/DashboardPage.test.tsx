@@ -81,7 +81,7 @@ function setUser(permissions: string[]) {
       fullName: 'Test User',
       roles: ['Executive'],
       permissions,
-      hasAvatar: false,
+      hasAvatar: false, hasSignature: false,
       idCardNo: null,
     },
     permissions: new Set(permissions),

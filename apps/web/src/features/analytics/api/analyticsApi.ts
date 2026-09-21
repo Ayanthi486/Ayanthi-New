@@ -1,7 +1,6 @@
 import type {
   AnalyticsFilterQuery,
   AnalyticsGroupBy,
-  AnalyticsPeriod,
   AnalyticsShipmentRow,
   AnalyticsSummaryResponse,
 } from '@hub-lanka/shared';
@@ -28,10 +27,9 @@ export async function getShipmentReport(
 export async function getAnalyticsSummary(
   filters: AnalyticsFilterQuery,
   groupBy: AnalyticsGroupBy,
-  period?: AnalyticsPeriod,
 ): Promise<AnalyticsSummaryResponse> {
   return apiFetch<AnalyticsSummaryResponse>(
-    `/analytics/summary${toQueryString({ ...filters, groupBy, period })}`,
+    `/analytics/summary${toQueryString({ ...filters, groupBy })}`,
   );
 }
 
@@ -59,9 +57,8 @@ export async function downloadShipmentReportCsv(filters: AnalyticsFilterQuery): 
 export async function downloadAnalyticsSummaryCsv(
   filters: AnalyticsFilterQuery,
   groupBy: AnalyticsGroupBy,
-  period: AnalyticsPeriod | undefined,
 ): Promise<Blob> {
   return downloadCsv(
-    `/analytics/summary${toQueryString({ ...filters, groupBy, period, format: 'csv' })}`,
+    `/analytics/summary${toQueryString({ ...filters, groupBy, format: 'csv' })}`,
   );
 }

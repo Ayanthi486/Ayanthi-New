@@ -120,10 +120,8 @@ describe('DocumentsSection', () => {
       vi.fn((url: string) => {
         if (url.includes('/readiness'))
           return Promise.resolve(jsonResponse(200, { ready: true, missingFields: [] }));
-        if (url.includes('/documents/ADF')) {
-          return Promise.resolve(
-            jsonResponse(404, { error: { code: 'NOT_FOUND', message: 'not found' } }),
-          );
+        if (url.includes('/attachments')) {
+          return Promise.resolve(jsonResponse(200, []));
         }
         return Promise.resolve(jsonResponse(200, stickerFixture));
       }),
@@ -137,33 +135,32 @@ describe('DocumentsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ADF' }));
 
     await waitFor(() => {
-      expect(screen.getByText('No file has been uploaded yet.')).toBeInTheDocument();
+      expect(screen.getByText('No files attached yet.')).toBeInTheDocument();
     });
     // The generate/edit/issue flow (Preview/Print/Issue/Create) never applies to an upload type.
     expect(screen.queryByRole('button', { name: 'Print' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Issue' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Preview' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Create ADF' })).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Upload file (PDF)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Upload a file')).toBeInTheDocument();
   });
 
-  it('ADF shows Print/Download once a file has been uploaded, and uploading calls the upload endpoint', async () => {
-    const uploadedAdfFixture = {
-      ...stickerFixture,
-      id: 'doc-adf-1',
-      type: 'ADF',
-      status: 'ISSUED',
-      hasStoredFile: true,
-      issuedAt: '2026-08-02T00:00:00.000Z',
+  it('ADF shows Download/Remove once a file has been uploaded, and uploading calls the upload endpoint', async () => {
+    const uploadedAttachment = {
+      id: 'attach-1',
+      filename: 'doc.pdf',
+      size: 1024,
+      createdAt: '2026-08-02T00:00:00.000Z',
+      category: 'ADF',
     };
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
       if (url.includes('/readiness'))
         return Promise.resolve(jsonResponse(200, { ready: true, missingFields: [] }));
-      if (url.includes('/documents/ADF/upload') && init?.method === 'POST') {
-        return Promise.resolve(jsonResponse(201, uploadedAdfFixture));
+      if (url.includes('/attachments') && init?.method === 'POST') {
+        return Promise.resolve(jsonResponse(201, uploadedAttachment));
       }
-      if (url.includes('/documents/ADF')) {
-        return Promise.resolve(jsonResponse(200, uploadedAdfFixture));
+      if (url.includes('/attachments')) {
+        return Promise.resolve(jsonResponse(200, [uploadedAttachment]));
       }
       return Promise.resolve(jsonResponse(200, stickerFixture));
     });
@@ -172,9 +169,9 @@ describe('DocumentsSection', () => {
     renderSection();
     fireEvent.click(await screen.findByRole('button', { name: 'ADF' }));
 
-    const fileInput = await screen.findByLabelText('Replace file (PDF)');
-    expect(screen.getByRole('button', { name: 'Print' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
+    const fileInput = await screen.findByLabelText('Upload a file');
+    expect(await screen.findByRole('button', { name: 'Download' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
 
     const file = new File(['%PDF-1.4'], 'doc.pdf', { type: 'application/pdf' });
     fireEvent.change(fileInput, { target: { files: [file] } });
@@ -182,7 +179,7 @@ describe('DocumentsSection', () => {
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(
-          (c) => c[0].includes('/documents/ADF/upload') && c[1]?.method === 'POST',
+          (c) => c[0].includes('/attachments') && c[1]?.method === 'POST',
         ),
       ).toBe(true),
     );
@@ -194,6 +191,7 @@ describe('DocumentsSection', () => {
       focus: vi.fn(),
       print: vi.fn(),
       close: vi.fn(),
+      location: {} as any,
     };
   }
 
@@ -220,14 +218,13 @@ describe('DocumentsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Print' }));
 
     // window.open is called synchronously, inside the click handler, before
-    // the print-payload fetch has resolved — that's what keeps it from
-    // being treated as a popup outside a user gesture.
+    // The window is opened synchronously to ensure it happens inside the click handler context,
+    // avoiding popup blockers.
     expect(openSpy).toHaveBeenCalledTimes(1);
-    expect(fakeWindow.document.write).toHaveBeenCalledWith(expect.stringContaining('Preparing'));
 
-    await waitFor(() => expect(fakeWindow.print).toHaveBeenCalledTimes(1));
-    expect(fakeWindow.document.write).toHaveBeenCalledWith('<p>THE DOCUMENT</p>');
-    expect(fakeWindow.focus).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(fakeWindow.location.href).toContain('blob:');
+    });
   });
 
   it('shows a clear message instead of silently failing when the print window is popup-blocked', async () => {
@@ -444,8 +441,7 @@ describe('DocumentsSection', () => {
           'Cost Sheet',
           'ADF',
            'AWB',
-          'Box Picture',
-          'Other Documents',
+          'Shipment Documents',
           'CUSDEC',
           'Freight Invoice',
         ].includes(label ?? ''),
@@ -457,9 +453,8 @@ describe('DocumentsSection', () => {
       'CDN',
       'Cost Sheet',
       'ADF',
-       'AWB',
-          'Box Picture',
-      'Other Documents',
+      'AWB',
+      'Shipment Documents',
       'CUSDEC',
       'Freight Invoice',
     ]);
@@ -507,7 +502,7 @@ describe('DocumentsSection', () => {
     expect(screen.queryByRole('button', { name: 'AWB Sticker' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'CDN' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'AWB' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Other Documents' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Shipment Documents' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'CUSDEC' })).toBeInTheDocument();
   });
 

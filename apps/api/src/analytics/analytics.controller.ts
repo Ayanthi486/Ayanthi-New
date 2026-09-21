@@ -40,13 +40,13 @@ export class AnalyticsController {
     @Query() query: AnalyticsSummaryQueryDto,
     @Query('format') format?: string,
   ): Promise<AnalyticsSummaryResponse | StreamableFile> {
-    const { groupBy, period, ...filters } = query;
+    const { groupBy, ...filters } = query;
     if (format === 'csv') {
       return csvFile(
-        await this.analyticsService.exportSummaryCsv(filters, groupBy, period),
+        await this.analyticsService.exportSummaryCsv(filters, groupBy),
         `analytics-summary-${groupBy}.csv`,
       );
     }
-    return this.analyticsService.getSummary(filters, groupBy, period);
+    return this.analyticsService.getSummary(filters, groupBy);
   }
 }

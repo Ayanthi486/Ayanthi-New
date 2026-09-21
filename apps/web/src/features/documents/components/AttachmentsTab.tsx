@@ -82,7 +82,9 @@ export function AttachmentsTab({ shipmentId, category, accept, description }: { 
     });
   };
 
-  const attachments = (attachmentsQuery.data ?? []).filter(a => a.category === category);
+  const attachments = Array.isArray(attachmentsQuery.data)
+    ? attachmentsQuery.data.filter((a) => a.category === category)
+    : [];
 
   return (
     <div className="flex flex-col gap-4">

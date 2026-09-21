@@ -6,6 +6,7 @@ import {
   useCommodities,
   useShippers,
 } from '@/features/masterdata/hooks/useMasterdata';
+import { useAuthStore } from '@/lib/authStore';
 
 const selectClassName = 'border-input h-9 rounded-md border bg-transparent px-3 text-sm';
 
@@ -17,6 +18,9 @@ export function AnalyticsFilters({
   value: AnalyticsFilterQuery;
   onChange: (next: AnalyticsFilterQuery) => void;
 }) {
+  const user = useAuthStore((state) => state.user);
+  const isDirector = user?.roles.includes('director') ?? false;
+
   const shippersQuery = useShippers();
   const airlinesQuery = useAirlines();
   const commoditiesQuery = useCommodities();
@@ -24,7 +28,7 @@ export function AnalyticsFilters({
   const set = (patch: Partial<AnalyticsFilterQuery>) => onChange({ ...value, ...patch });
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-5">
+    <div className={`grid grid-cols-1 gap-4 ${isDirector ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="dateFrom">From</Label>
         <Input
@@ -75,22 +79,24 @@ export function AnalyticsFilters({
           ))}
         </select>
       </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="shipperId">Shipper</Label>
-        <select
-          id="shipperId"
-          className={selectClassName}
-          value={value.shipperId ?? ''}
-          onChange={(e) => set({ shipperId: e.target.value || undefined })}
-        >
-          <option value="">All shippers</option>
-          {shippersQuery.data?.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
-      </div>
+      {isDirector && (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="shipperId">Shipper</Label>
+          <select
+            id="shipperId"
+            className={selectClassName}
+            value={value.shipperId ?? ''}
+            onChange={(e) => set({ shipperId: e.target.value || undefined })}
+          >
+            <option value="">All shippers</option>
+            {shippersQuery.data?.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
     </div>
   );
 }

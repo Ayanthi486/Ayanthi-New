@@ -7,7 +7,16 @@ export interface FieldConfigEntry {
 
 /** Read-only, populated live from the Shipment (PRD §9's "Populated from Shipment" column) — never editable here. */
 export const VIEW_MODEL_FIELDS: Record<DocumentType, FieldConfigEntry[]> = {
-  SECURITY_CLEARANCE: [],
+  SECURITY_CLEARANCE: [
+    { key: 'awbNo', label: 'AWB No' },
+    { key: 'cargoDescription', label: 'Description of Cargo' },
+    { key: 'boxCount', label: 'Pieces' },
+    { key: 'weightKg', label: 'Weight (kg)' },
+    { key: 'flightNo', label: 'Flight No' },
+    { key: 'flightDate', label: 'Flight Date' },
+    { key: 'destination', label: 'Destination' },
+    { key: 'shipperName', label: 'Shipper' },
+  ],
 
   AWB_STICKER: [
     { key: 'origin', label: 'Origin' },
@@ -56,7 +65,21 @@ export const VIEW_MODEL_FIELDS: Record<DocumentType, FieldConfigEntry[]> = {
 
 /** Manual fields (PRD §9's "Manual fields" column) — editable, saved as `fieldData`. */
 export const FIELD_DATA_FIELDS: Record<DocumentType, FieldConfigEntry[]> = {
-  SECURITY_CLEARANCE: [],
+  SECURITY_CLEARANCE: [
+    { key: 'fullName', label: 'Full Name of Shipper/Agent' },
+    { key: 'designation', label: 'Designation' },
+    { key: 'organizationName', label: 'Name of Organization' },
+    { key: 'nic', label: 'NIC No' },
+    { key: 'certificationDate', label: 'Date' },
+    { key: 'handoverEmployeeName', label: 'Handover — Name of Employee' },
+    { key: 'handoverSNo', label: 'Handover — S/NO' },
+    { key: 'handoverDesignation', label: 'Handover — Designation' },
+    { key: 'handoverNic', label: 'Handover — NIC No' },
+    { key: 'handoverDate', label: 'Handover — Date' },
+    { key: 'takenChargeName', label: 'Taken Charge By — Name' },
+    { key: 'takenChargeStaffNo', label: 'Taken Charge By — Staff No' },
+    { key: 'takenChargeDate', label: 'Taken Charge By — Date' },
+  ],
 
   AWB_STICKER: [{ key: 'carrierName', label: 'Carrier (template selection)' }],
   ADF: [

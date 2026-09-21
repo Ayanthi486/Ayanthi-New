@@ -44,23 +44,27 @@ export function ProfilePage() {
 
   const [fullName, setFullName] = useState(user?.fullName ?? '');
   const [idCardNo, setIdCardNo] = useState(user?.idCardNo ?? '');
-  const [clientFileError, setClientFileError] = useState<string | null>(null);
-
-  if (!user) return null;
+  const [clientPhotoError, setClientPhotoError] = useState<string | null>(null);
+  const [clientSignatureError, setClientSignatureError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     if (user?.hasSignature) {
       downloadSignature()
         .then((blob) => {
-          if (active) setSignatureUrl(URL.createObjectURL(blob));
+          if (!active) return;
+          setSignatureUrl(URL.createObjectURL(blob));
         })
         .catch(() => {});
     } else {
       setSignatureUrl(null);
     }
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [user?.hasSignature]);
+
+  if (!user) return null;
 
 
   const isDirty =
@@ -84,13 +88,13 @@ export function ProfilePage() {
     event.target.value = '';
     if (!file) return;
 
-    setClientFileError(null);
+    setClientPhotoError(null);
     if (!ACCEPTED_TYPES.includes(file.type)) {
-      setClientFileError('Please choose a JPEG or PNG image.');
+      setClientPhotoError('Please choose a JPEG or PNG image.');
       return;
     }
     if (file.size > CLIENT_MAX_BYTES) {
-      setClientFileError('Image must be 3MB or smaller.');
+      setClientPhotoError('Image must be 3MB or smaller.');
       return;
     }
 
@@ -103,14 +107,14 @@ export function ProfilePage() {
     e.target.value = '';
     if (!file) return;
     
-    setClientFileError(null);
+    setClientSignatureError(null);
     if (!ACCEPTED_TYPES.includes(file.type)) {
-      setClientFileError('Please choose a JPEG or PNG image for signature.');
+      setClientSignatureError('Please choose a JPEG or PNG image for signature.');
       return;
     }
 
     if (file.size > CLIENT_MAX_BYTES) {
-      setClientFileError('Signature must be 3MB or smaller.');
+      setClientSignatureError('Signature must be 3MB or smaller.');
       return;
     }
 
@@ -118,7 +122,7 @@ export function ProfilePage() {
   };
 
   const photoErrorText =
-    clientFileError ??
+    clientPhotoError ??
     (uploadAvatarMutation.isError
       ? errorMessage(uploadAvatarMutation.error, 'Unable to upload the photo.')
       : removeAvatarMutation.isError
@@ -126,7 +130,7 @@ export function ProfilePage() {
         : null);
 
   const signatureErrorText =
-    clientFileError ??
+    clientSignatureError ??
     (uploadSignatureMutation.isError
       ? errorMessage(uploadSignatureMutation.error, 'Unable to upload the signature.')
       : removeSignatureMutation.isError

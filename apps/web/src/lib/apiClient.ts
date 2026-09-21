@@ -7,7 +7,7 @@ import {
 } from '@hub-lanka/shared';
 import { useAuthStore } from './authStore';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:3000/api/v1';
 
 // /healthz is deliberately outside /api/v1 (ARCHITECTURE §23) so uptime
 // monitors and load balancer probes can hit a stable, unversioned path.
@@ -97,7 +97,8 @@ async function attemptRefresh(): Promise<boolean> {
 export async function apiFetch<T>(path: string, init?: RequestInit, isRetry = false): Promise<T> {
   const response = await rawFetch(path, init ?? {});
 
-  if (response.status === 401 && !isRetry) {
+  const isAuthEndpoint = path.startsWith('/auth/login') || path.startsWith('/auth/refresh');
+  if (response.status === 401 && !isRetry && !isAuthEndpoint) {
     const refreshed = await attemptRefresh();
     if (refreshed) {
       return apiFetch<T>(path, init, true);

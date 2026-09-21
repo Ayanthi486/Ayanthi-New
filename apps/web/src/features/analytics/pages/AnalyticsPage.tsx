@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import {
   ANALYTICS_GROUP_BY,
-  ANALYTICS_PERIODS,
   type AnalyticsFilterQuery,
 } from '@hub-lanka/shared';
+import { FileSpreadsheet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   downloadAnalyticsSummaryCsv,
@@ -15,17 +15,12 @@ import { SummaryChart } from '@/features/analytics/components/SummaryChart';
 import { useAnalyticsSummary, useShipmentReport } from '@/features/analytics/hooks/useAnalytics';
 
 const DIMENSION_LABELS: Record<(typeof ANALYTICS_GROUP_BY)[number], string> = {
-  time: 'Time',
   commodity: 'Commodity',
   airline: 'Airline',
+  consignee: 'Consignee',
   shipper: 'Shipper',
-};
-
-const PERIOD_LABELS: Record<(typeof ANALYTICS_PERIODS)[number], string> = {
-  day: 'Daily',
-  week: 'Weekly',
-  month: 'Monthly',
-  year: 'Yearly',
+  destination: 'Destination',
+  salesPerson: 'Sales Person',
 };
 
 function triggerDownload(blob: Blob, filename: string): void {
@@ -39,14 +34,13 @@ function triggerDownload(blob: Blob, filename: string): void {
 
 /** Manager + Director dashboard (PRD §10) — one dimension tab set behind the shared `analytics.view` permission (decision #5, Phase 9 report). */
 export function AnalyticsPage() {
+  const validDimensions = ANALYTICS_GROUP_BY;
   const [filters, setFilters] = useState<AnalyticsFilterQuery>({});
-  const [groupBy, setGroupBy] = useState<(typeof ANALYTICS_GROUP_BY)[number]>('time');
-  const [period, setPeriod] = useState<(typeof ANALYTICS_PERIODS)[number]>('month');
+  const [groupBy, setGroupBy] = useState<(typeof ANALYTICS_GROUP_BY)[number]>('commodity');
 
   const summaryQuery = useAnalyticsSummary(
     filters,
     groupBy,
-    groupBy === 'time' ? period : undefined,
   );
   const shipmentsQuery = useShipmentReport(filters);
 
@@ -54,7 +48,6 @@ export function AnalyticsPage() {
     void downloadAnalyticsSummaryCsv(
       filters,
       groupBy,
-      groupBy === 'time' ? period : undefined,
     ).then((blob) => triggerDownload(blob, `analytics-summary-${groupBy}.csv`));
   };
 
@@ -78,7 +71,7 @@ export function AnalyticsPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-b">
         <div className="flex flex-wrap gap-1">
-          {ANALYTICS_GROUP_BY.map((dimension) => (
+          {validDimensions.map((dimension) => (
             <button
               key={dimension}
               type="button"
@@ -93,19 +86,6 @@ export function AnalyticsPage() {
             </button>
           ))}
         </div>
-        {groupBy === 'time' && (
-          <select
-            className="border-input h-8 rounded-md border bg-transparent px-2 text-sm"
-            value={period}
-            onChange={(e) => setPeriod(e.target.value as (typeof ANALYTICS_PERIODS)[number])}
-          >
-            {ANALYTICS_PERIODS.map((p) => (
-              <option key={p} value={p}>
-                {PERIOD_LABELS[p]}
-              </option>
-            ))}
-          </select>
-        )}
       </div>
 
       {summaryQuery.isLoading && <p className="text-muted-foreground text-sm">Loading…</p>}
@@ -117,10 +97,12 @@ export function AnalyticsPage() {
         <h2 className="font-medium">Shipments (drill-through)</h2>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={exportSummary}>
-            Export summary CSV
+            <FileSpreadsheet className="mr-2 h-4 w-4" />
+            Export summary Excel
           </Button>
           <Button variant="outline" size="sm" onClick={exportShipments}>
-            Export shipments CSV
+            <FileSpreadsheet className="mr-2 h-4 w-4" />
+            Export shipments Excel
           </Button>
         </div>
       </div>

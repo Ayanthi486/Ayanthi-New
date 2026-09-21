@@ -254,13 +254,14 @@ export function CostSheetSection({ shipmentId }: { shipmentId: string }) {
           key={costSheetQuery.data.version}
           shipmentId={shipmentId}
           costSheet={costSheetQuery.data}
+          signatureBase64={signatureBase64}
         />
       )}
     </div>
   );
 }
 
-function CostSheetDetail({ shipmentId, costSheet }: { shipmentId: string; costSheet: CostSheet }) {
+function CostSheetDetail({ shipmentId, costSheet, signatureBase64 }: { shipmentId: string; costSheet: CostSheet; signatureBase64: string | null }) {
   const shipmentQuery = useShipment(shipmentId);
   const updateMutation = useUpdateCostSheet(shipmentId);
   const releaseMutation = useReleaseCostSheet(shipmentId);
@@ -341,7 +342,7 @@ function CostSheetDetail({ shipmentId, costSheet }: { shipmentId: string; costSh
         </div>
         
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => printCostSheet(costSheet, shipmentQuery.data!)}
+          <Button variant="outline" size="sm" onClick={() => printCostSheet(costSheet, shipmentQuery.data!, signatureBase64)}
             disabled={!shipmentQuery.data}>
             Print
           </Button>

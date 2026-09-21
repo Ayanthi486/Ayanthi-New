@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AnalyticsShipmentRow } from '@hub-lanka/shared';
 import {
-  bucketKey,
   resolveExchangeRate,
   summarize,
   toAnalyticsRow,
@@ -21,6 +20,12 @@ const BASE_ROW: ShipmentReportViewRow = {
   airline_name: 'Emirates',
   shipper_id: 'shipper-1',
   shipper_name: 'Acme Exports',
+  consignee_id: 'consignee-1',
+  consignee_name: 'Acme Imports',
+  destination_airport_id: 'airport-1',
+  destination_airport_code: 'DXB',
+  sales_person_id: 'user-1',
+  sales_person_name: 'John Doe',
   chargeable_weight_kg: { toString: () => '500.000' },
   invoice_exchange_rate: null,
   revenue_usd: { toString: () => '0' },
@@ -89,27 +94,7 @@ describe('toAnalyticsRow — BR-38 profit arithmetic', () => {
   });
 });
 
-describe('bucketKey — PRD §10 time dimension', () => {
-  it('day is the flightDate unchanged', () => {
-    expect(bucketKey('2026-08-04', 'day')).toBe('2026-08-04');
-  });
 
-  it('month truncates to YYYY-MM', () => {
-    expect(bucketKey('2026-08-04', 'month')).toBe('2026-08');
-  });
-
-  it('year truncates to YYYY', () => {
-    expect(bucketKey('2026-08-04', 'year')).toBe('2026');
-  });
-
-  it('week is the ISO-8601 week — 2024-01-01 (a Monday) starts week 1', () => {
-    expect(bucketKey('2024-01-01', 'week')).toBe('2024-W01');
-  });
-
-  it('week assigns a year-boundary Sunday to the prior ISO year (2023-01-01 -> 2022-W52)', () => {
-    expect(bucketKey('2023-01-01', 'week')).toBe('2022-W52');
-  });
-});
 
 describe('summarize — ARCHITECTURE §17 reconciliation', () => {
   function row(overrides: Partial<AnalyticsShipmentRow>): AnalyticsShipmentRow {
@@ -125,6 +110,12 @@ describe('summarize — ARCHITECTURE §17 reconciliation', () => {
       airlineName: 'Emirates',
       shipperId: 's1',
       shipperName: 'Acme',
+      consigneeId: 'c1',
+      consigneeName: 'Imports',
+      destinationAirportId: 'a1',
+      destinationAirportCode: 'DXB',
+      salesPersonId: 'user-1',
+      salesPersonName: 'John Doe',
       chargeableWeightKg: '100.000',
       exchangeRateUsed: '340.50',
       revenueUsd: '100.00',
@@ -161,17 +152,19 @@ describe('summarize — ARCHITECTURE §17 reconciliation', () => {
     expect(totals.shipmentCount).toBe(3);
   });
 
-  it('groups by time using the requested period', () => {
+  it('groups by salesPerson correctly', () => {
     const rows = [
-      row({ shipmentId: 's1', flightDate: '2026-08-04' }),
-      row({ shipmentId: 's2', flightDate: '2026-08-20' }),
-      row({ shipmentId: 's3', flightDate: '2026-09-01' }),
+      row({ shipmentId: 's1', salesPersonId: 'u1', salesPersonName: 'Alice' }),
+      row({ shipmentId: 's2', salesPersonId: 'u2', salesPersonName: 'Bob' }),
+      row({ shipmentId: 's3', salesPersonId: 'u1', salesPersonName: 'Alice' }),
     ];
 
-    const { groups } = summarize(rows, 'time', 'month');
+    const { groups } = summarize(rows, 'salesPerson');
 
-    expect(groups.map((g) => g.key)).toEqual(['2026-08', '2026-09']);
-    expect(groups[0]?.shipmentCount).toBe(2);
+    expect(groups).toHaveLength(2);
+    const alice = groups.find((g) => g.key === 'u1');
+    expect(alice?.label).toBe('Alice');
+    expect(alice?.shipmentCount).toBe(2);
   });
 });
 

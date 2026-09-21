@@ -8,12 +8,12 @@ function jsonResponse(status: number, body: unknown) {
 }
 
 const summaryFixture = {
-  groupBy: 'time',
-  period: 'month',
+  groupBy: 'commodity',
+  period: null,
   groups: [
     {
-      key: '2026-08',
-      label: '2026-08',
+      key: 'c1',
+      label: 'Fish',
       shipmentCount: 2,
       weightKg: '600.000',
       revenueUsd: '200.00',
@@ -49,8 +49,14 @@ const shipmentsFixture = [
     commodityName: 'Fish',
     airlineId: 'a1',
     airlineName: 'Emirates',
+    consigneeId: 'co1',
+    consigneeName: 'Test Consignee',
     shipperId: 's1',
     shipperName: 'Acme',
+    destinationAirportId: 'da1',
+    destinationAirportCode: 'DXB',
+    salesPersonId: 'user-1',
+    salesPersonName: 'John Doe',
     chargeableWeightKg: '300.000',
     exchangeRateUsed: '340.50',
     revenueUsd: '100.00',
@@ -100,7 +106,7 @@ describe('AnalyticsPage', () => {
     expect(screen.getAllByText('68100.00').length).toBeGreaterThan(0);
     expect(screen.getByText('19430.00')).toBeInTheDocument();
 
-    expect(requestedUrls.some((u) => u.includes('groupBy=time'))).toBe(true);
+    expect(requestedUrls.some((u) => u.includes('groupBy=commodity'))).toBe(true);
   });
 
   it('switching dimension tabs re-queries the summary with the new groupBy', async () => {
@@ -111,7 +117,7 @@ describe('AnalyticsPage', () => {
         requestedUrls.push(url);
         if (url.includes('/analytics/summary'))
           return Promise.resolve(
-            jsonResponse(200, { ...summaryFixture, groupBy: 'commodity', period: null }),
+            jsonResponse(200, { ...summaryFixture, groupBy: 'airline', period: null }),
           );
         if (url.includes('/analytics/shipments'))
           return Promise.resolve(jsonResponse(200, shipmentsFixture));
@@ -122,10 +128,10 @@ describe('AnalyticsPage', () => {
     renderPage();
     await waitFor(() => expect(screen.getByText('HUB 000001')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Commodity' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Airline' }));
 
     await waitFor(() => {
-      expect(requestedUrls.some((u) => u.includes('groupBy=commodity'))).toBe(true);
+      expect(requestedUrls.some((u) => u.includes('groupBy=airline'))).toBe(true);
     });
   });
 
@@ -144,7 +150,7 @@ describe('AnalyticsPage', () => {
     renderPage();
     await waitFor(() => expect(screen.getByText('HUB 000001')).toBeInTheDocument());
 
-    expect(screen.getByRole('button', { name: 'Export summary CSV' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Export shipments CSV' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Export summary Excel' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Export shipments Excel' })).toBeInTheDocument();
   });
 });

@@ -2,12 +2,8 @@ import { z } from 'zod';
 import { SHIPMENT_STATUSES } from './shipment.js';
 
 /** PRD §10 dimensions; ARCHITECTURE §17. */
-export const ANALYTICS_GROUP_BY = ['time', 'commodity', 'airline', 'shipper'] as const;
+export const ANALYTICS_GROUP_BY = ['commodity', 'airline', 'consignee', 'shipper', 'destination', 'salesPerson'] as const;
 export type AnalyticsGroupBy = (typeof ANALYTICS_GROUP_BY)[number];
-
-/** Only meaningful when groupBy is 'time'. */
-export const ANALYTICS_PERIODS = ['day', 'week', 'month', 'year'] as const;
-export type AnalyticsPeriod = (typeof ANALYTICS_PERIODS)[number];
 
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected date as YYYY-MM-DD');
 
@@ -23,7 +19,6 @@ export type AnalyticsFilterQuery = z.infer<typeof analyticsFilterQuerySchema>;
 
 export const analyticsSummaryQuerySchema = analyticsFilterQuerySchema.extend({
   groupBy: z.enum(ANALYTICS_GROUP_BY),
-  period: z.enum(ANALYTICS_PERIODS).optional(),
 });
 export type AnalyticsSummaryQuery = z.infer<typeof analyticsSummaryQuerySchema>;
 
@@ -38,8 +33,14 @@ export const analyticsShipmentRowSchema = z.object({
   commodityName: z.string(),
   airlineId: z.string(),
   airlineName: z.string(),
+  consigneeId: z.string(),
+  consigneeName: z.string(),
   shipperId: z.string(),
   shipperName: z.string(),
+  destinationAirportId: z.string(),
+  destinationAirportCode: z.string(),
+  salesPersonId: z.string(),
+  salesPersonName: z.string(),
   chargeableWeightKg: z.string().nullable(),
   // The rate actually used to convert buyingCostUsd -> buyingCostLkr — the
   // shipment's own invoice.exchangeRate when set, else the configured
@@ -74,7 +75,6 @@ export type AnalyticsSummaryGroup = z.infer<typeof analyticsSummaryGroupSchema>;
 
 export const analyticsSummaryResponseSchema = z.object({
   groupBy: z.enum(ANALYTICS_GROUP_BY),
-  period: z.enum(ANALYTICS_PERIODS).nullable(),
   groups: z.array(analyticsSummaryGroupSchema),
   totals: analyticsSummaryGroupSchema,
 });

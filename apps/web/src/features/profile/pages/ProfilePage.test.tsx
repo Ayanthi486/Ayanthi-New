@@ -14,7 +14,7 @@ const baseUser = {
   fullName: 'Ashmika Dilshan',
   roles: ['Manager'],
   permissions: ['identity.user.manage'],
-  hasAvatar: false,
+  hasAvatar: false, hasSignature: false,
   idCardNo: null,
 };
 

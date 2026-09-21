@@ -407,7 +407,7 @@ function CreateMasterDataDialog({
     }
   }
 
-  function handleSubmit(event: FormEvent) {
+  function handleSubmit(event: FormEvent) { 
     event.preventDefault();
     if (missingRequired) return;
     if (duplicate && !confirmingDuplicate) {
